@@ -205,10 +205,15 @@ else:
                 new_id = f"TKT-{count + 101}"
                 photo_path = save_image_buffer(fault_img, "fault", new_id)
 
-                now_time = datetime.now()
+                now_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 cursor.execute("""
-                    INSERT INTO faults (id, site, dg, desc, status, docket, assigned_eng, logged_by, logged_by_selfie, logged_by_loc, rectification, fault_photo, rect_photo, created_at, closed_at)
-                    VALUES (?, ?, ?, ?, 'PENDING_SM', '', '', ?, ?, ?, '', ?, '', ?, NULL)
+                    INSERT INTO faults (
+                        id, site, dg, desc, status, docket, assigned_eng, 
+                        logged_by, logged_by_selfie, logged_by_loc, 
+                        action_by_selfie, action_by_loc, rectification, 
+                        fault_photo, rect_photo, created_at, closed_at
+                    )
+                    VALUES (?, ?, ?, ?, 'PENDING_SM', '', '', ?, ?, ?, '', '', '', ?, '', ?, NULL)
                 """, (new_id, site, dg, desc, current_username, user_selfie, user_loc, photo_path, now_time))
                 conn.commit()
 

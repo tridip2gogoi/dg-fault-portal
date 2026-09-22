@@ -42,21 +42,8 @@ USERS = {
     "manager2": {"password": "2026", "role": "Service Manager", "name": "Rakesh Ahmed (SM)"},
     "manager3": {"password": "2026", "role": "Service Manager", "name": "Saharul (SM)"},
     "docket": {"password": "2027", "role": "Docket Team", "name": "Docket Desk"},
-    "eng1": {"password": "124", "role": "Service Engineer", "name": "Harnual Roshid (Engineer)"},
-    "eng2": {"password": "124", "role": "Service Engineer", "name": "Krishna Kanta Hazarika (Engineer)"},
-    "eng3": {"password": "124", "role": "Service Engineer", "name": "Shaha Alom (Engineer)"},
-    "eng4": {"password": "124", "role": "Service Engineer", "name": "Suman Kumar (Engineer)"},
-    "eng5": {"password": "124", "role": "Service Engineer", "name": "Belikson Momin (Engineer)"},
-    "eng6": {"password": "124", "role": "Service Engineer", "name": "Sengvear Momin (Engineer)"},
-    "eng7": {"password": "124", "role": "Service Engineer", "name": "Ramij Ali (Engineer)"},
-    "eng8": {"password": "124", "role": "Service Engineer", "name": "George Momin (Engineer)"},
-    "eng9": {"password": "124", "role": "Service Engineer", "name": "Mofidul Islam (Engineer)"},
-    "eng10": {"password": "124", "role": "Service Engineer", "name": "Binod Sangma (Engineer)"},
-    "eng11": {"password": "124", "role": "Service Engineer", "name": "Rakibul Islam (Engineer)"},
-    "eng12": {"password": "124", "role": "Service Engineer", "name": "Alexbirth Sangma (Engineer)"},
-    "eng13": {"password": "124", "role": "Service Engineer", "name": "Habizul Rahman (Engineer)"},
-    "eng14": {"password": "124", "role": "Service Engineer", "name": "Stebirth Sangma (Engineer)"},
-    "eng15": {"password": "124", "role": "Service Engineer", "name": "Khairul Islam (Engineer)"},
+    "eng1": {"password": "124", "role": "Service Engineer", "name": "Biren (Engineer)"},
+    "eng2": {"password": "124", "role": "Service Engineer", "name": "Anup (Engineer)"}
 }
 
 ENGINEERS_LIST = {u: USERS[u]["name"] for u in USERS if USERS[u]["role"] == "Service Engineer"}
@@ -104,7 +91,6 @@ def save_image_buffer(image_buffer, prefix, user_or_ticket):
         filename = f"{prefix}_{user_or_ticket}_{int(datetime.now().timestamp())}.jpg"
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         with open(filepath, "wb") as f:
-            # camera_input আৰু file_uploader দুয়োটাৰে বাবে কাম কৰিব
             if hasattr(image_buffer, "getvalue"):
                 f.write(image_buffer.getvalue())
             elif hasattr(image_buffer, "get_buffer"):
@@ -113,6 +99,20 @@ def save_image_buffer(image_buffer, prefix, user_or_ticket):
                 f.write(image_buffer.read())
         return filepath
     return ""
+
+def format_dt(dt_val):
+    """তাৰিখ আৰু সময় সহজভাৱে সজাই দেখুৱাবলৈ সহায়ক ফাংচন"""
+    if not dt_val:
+        return ""
+    try:
+        if isinstance(dt_val, str):
+            clean_str = dt_val.split(".")[0]
+            dt_obj = datetime.strptime(clean_str, "%Y-%m-%d %H:%M:%S")
+        else:
+            dt_obj = dt_val
+        return dt_obj.strftime("%d-%b-%Y, %I:%M %p")
+    except Exception:
+        return str(dt_val)[:16]
 
 # ----------------- SESSION & LOGIN (WITH SELFIE & GPS) -----------------
 if "logged_in" not in st.session_state:
@@ -205,13 +205,14 @@ else:
                 new_id = f"TKT-{count + 101}"
                 photo_path = save_image_buffer(fault_img, "fault", new_id)
 
+                now_time = datetime.now()
                 cursor.execute("""
                     INSERT INTO faults (id, site, dg, desc, status, docket, assigned_eng, logged_by, logged_by_selfie, logged_by_loc, rectification, fault_photo, rect_photo, created_at, closed_at)
                     VALUES (?, ?, ?, ?, 'PENDING_SM', '', '', ?, ?, ?, '', ?, '', ?, NULL)
-                """, (new_id, site, dg, desc, current_username, user_selfie, user_loc, photo_path, datetime.now()))
+                """, (new_id, site, dg, desc, current_username, user_selfie, user_loc, photo_path, now_time))
                 conn.commit()
 
-                st.success(f"Fault {new_id} সফলভাৱে যোগ কৰা হ'ল!")
+                st.success(f"Fault {new_id} সফলভাৱে যোগ কৰা হ'ল! (Date: {format_dt(now_time)})")
                 st.rerun()
 
         st.divider()
@@ -219,7 +220,7 @@ else:
     st.subheader("Fault Requests & Status")
 
     cursor.execute("""
-        SELECT id, site, dg, desc, status, docket, assigned_eng, logged_by, logged_by_selfie, logged_by_loc, action_by_selfie, action_by_loc, rectification, fault_photo, rect_photo 
+        SELECT id, site, dg, desc, status, docket, assigned_eng, logged_by, logged_by_selfie, logged_by_loc, action_by_selfie, action_by_loc, rectification, fault_photo, rect_photo, created_at, closed_at 
         FROM faults ORDER BY created_at DESC
     """)
     rows = cursor.fetchall()
@@ -228,9 +229,23 @@ else:
         st.info("কোনো ৰেকৰ্ড পোৱা নগ'ল।")
 
     for r in rows:
-        t_id, t_site, t_dg, t_desc, t_status, t_docket, t_eng, t_logged_by, t_l_selfie, t_l_loc, t_act_selfie, t_act_loc, t_rect, t_fphoto, t_rphoto = r
+        (t_id, t_site, t_dg, t_desc, t_status, t_docket, t_eng, t_logged_by, 
+         t_l_selfie, t_l_loc, t_act_selfie, t_act_loc, t_rect, t_fphoto, t_rphoto, 
+         t_created_at, t_closed_at) = r
 
-        with st.expander(f"{t_id} | {t_site} - {t_dg} | [{t_status}]", expanded=(t_status != 'CLOSED')):
+        created_str = format_dt(t_created_at)
+        closed_str = format_dt(t_closed_at)
+
+        # শিৰোনামতে স্পষ্টকৈ তাৰিখ আৰু সময় ওলাব
+        with st.expander(f"{t_id} | {t_site} - {t_dg} | [{t_status}] 📅 {created_str}", expanded=(t_status != 'CLOSED')):
+            
+            c_meta1, c_meta2 = st.columns(2)
+            with c_meta1:
+                st.write(f"🕒 **Fault Logged Date:** {created_str}")
+            with c_meta2:
+                if t_status == "CLOSED" and closed_str:
+                    st.write(f"✅ **Closed Date:** {closed_str}")
+
             st.write(f"**সমস্যা:** {t_desc}")
             
             c_info1, c_info2 = st.columns([3, 1])

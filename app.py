@@ -1,6 +1,7 @@
 import streamlit as st
 import sqlite3
 import os
+import requests
 from datetime import datetime, timedelta
 from streamlit_js_eval import get_geolocation
 
@@ -8,6 +9,24 @@ st.set_page_config(page_title="DG Fault Portal", layout="wide")
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# ----------------- TELEGRAM BOT CONFIGURATION -----------------
+TELEGRAM_BOT_TOKEN = "8984648592:AAG0JKeI_z5gSrkF5A31AfYTYogmjzvg-FA"
+TELEGRAM_CHAT_ID = "-1003596057592"
+
+def send_telegram_alert(message_text):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message_text,
+        "parse_mode": "Markdown"
+    }
+    try:
+        requests.post(url, json=payload, timeout=5)
+    except Exception:
+        pass
 
 # ----------------- USER ACCOUNTS -----------------
 USERS = {
@@ -49,7 +68,7 @@ USERS = {
 ENGINEERS_LIST = {u: USERS[u]["name"] for u in USERS if USERS[u]["role"] == "Service Engineer"}
 
 # ----------------- DATABASE SETUP -----------------
-# ডাটাবেচৰ নাম সলনি কৰি dg_faults_v2.db কৰা হ'ল যাতে সকলো কলম নতুনকৈ সঠিকভাৱে বহে
+# পুৰণি টেবুলৰ অমিল এৰাবলৈ v2 ডাটাবেচ ব্যৱহাৰ কৰা হৈছে
 conn = sqlite3.connect("dg_faults_v2.db", check_same_thread=False)
 cursor = conn.cursor()
 
@@ -76,21 +95,13 @@ CREATE TABLE IF NOT EXISTS faults (
 """)
 conn.commit()
 
-# পুৰণি ডাটাবেচৰ সুৰক্ষাৰ বাবে কলম নিশ্চিত কৰা
-for col in ["logged_by_selfie", "logged_by_loc", "action_by_selfie", "action_by_loc"]:
-    try:
-        cursor.execute(f"ALTER TABLE faults ADD COLUMN {col} TEXT")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass
-
-thirty_days_ago = datetime.now() - timedelta(days=30)
+thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
 cursor.execute("DELETE FROM faults WHERE status = 'CLOSED' AND closed_at < ?", (thirty_days_ago,))
 conn.commit()
 
 def save_image_buffer(image_buffer, prefix, user_or_ticket):
     if image_buffer is not None:
-        filename = f"{prefix}_{user_or_ticket}_{int(datetime.now().timestamp())}.jpg"
+        filename = f"{prefix}{user_or_ticket}{int(datetime.now().timestamp())}.jpg"
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         with open(filepath, "wb") as f:
             if hasattr(image_buffer, "getvalue"):
@@ -115,7 +126,7 @@ def format_dt(dt_val):
     except Exception:
         return str(dt_val)[:16]
 
-# ----------------- SESSION & LOGIN (WITH SELFIE & GPS) -----------------
+# ----------------- SESSION & LOGIN (SELFIE & GPS) -----------------
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.username = ""
@@ -132,7 +143,7 @@ if not st.session_state.logged_in:
         login_user = st.text_input("Username")
         login_pass = st.text_input("Password", type="password")
 
-        st.write("📍 **লাইভ লোকেশন ধৰা হৈছে...**")
+        st.write("📍 *লাইভ লোকেশন ধৰা হৈছে...*")
         loc = get_geolocation()
         current_map_link = ""
 
@@ -144,7 +155,7 @@ if not st.session_state.logged_in:
         else:
             st.warning("ম'বাইলত Location (GPS) On কৰক আৰু ব্ৰাউজাৰক Allow কৰক।")
 
-        st.write("📷 **লগ-ইন কৰিবলৈ চেলফি লওক (বাধ্যতামূলক):**")
+        st.write("📷 *লগ-ইন কৰিবলৈ চেলফি লওক (বাধ্যতামূলক):*")
         selfie_pic = st.camera_input("Take Live Selfie")
 
         if st.button("Login", use_container_width=True):
@@ -152,7 +163,7 @@ if not st.session_state.logged_in:
                 if selfie_pic is None:
                     st.error("চেলফি লোৱাটো বাধ্যতামূলক!")
                 elif not current_map_link:
-                    st.error("GPS Location ধৰা পৰা নাই! ম'বাইলৰ GPS On কৰি Allow কৰক।")
+                    st.error("GPS Location ধৰা পৰা নাই! ম'বাইলৰ GPS On কৰি ব্ৰাউজাৰত Allow কৰক।")
                 else:
                     saved_selfie = save_image_buffer(selfie_pic, "login_selfie", login_user)
                     st.session_state.logged_in = True
@@ -173,7 +184,7 @@ else:
     col_t1, col_t2, col_t3 = st.columns([3, 1, 1])
     with col_t1:
         st.title("⚡ DG Fault Portal")
-        st.caption(f"Logged in: **{user['name']}** ({current_username}) | Role: **{role}**")
+        st.caption(f"Logged in: *{user['name']}* ({current_username}) | Role: *{role}*")
         if user_loc:
             st.markdown(f"[📍 আপোনাৰ Login Location চাওক]({user_loc})")
     with col_t2:
@@ -222,7 +233,19 @@ else:
                 ))
                 conn.commit()
 
-                st.success(f"Fault {new_id} সফলভাৱে যোগ কৰা হ'ল! (Date: {format_dt(now_time)})")
+                # Telegram Alert
+                tg_msg = (
+                    f"🚨 নতুন DG Fault Logged!\n\n"
+                    f"📌 Ticket ID: {new_id}\n"
+                    f"🏢 Site: {site}\n"
+                    f"⚙️ DG: {dg}\n"
+                    f"📝 সমস্যা: {desc}\n"
+                    f"👤 Logged by: {user['name']}\n"
+                    f"🕒 Date: {format_dt(now_time)}"
+                )
+                send_telegram_alert(tg_msg)
+
+                st.success(f"Fault {new_id} সফলভাৱে যোগ কৰা হ'ল! Telegram-ত Alert পঠিওৱা হৈছে।")
                 st.rerun()
 
         st.divider()
@@ -249,17 +272,17 @@ else:
         with st.expander(f"{t_id} | {t_site} - {t_dg} | [{t_status}] 📅 {created_str}", expanded=(t_status != 'CLOSED')):
             c_meta1, c_meta2 = st.columns(2)
             with c_meta1:
-                st.write(f"🕒 **Fault Logged Date:** {created_str}")
+                st.write(f"🕒 *Fault Logged Date:* {created_str}")
             with c_meta2:
                 if t_status == "CLOSED" and closed_str:
-                    st.write(f"✅ **Closed Date:** {closed_str}")
+                    st.write(f"✅ *Closed Date:* {closed_str}")
 
-            st.write(f"**সমস্যা:** {t_desc}")
+            st.write(f"*সমস্যা:* {t_desc}")
             
             c_info1, c_info2 = st.columns([3, 1])
             with c_info1:
                 creator_name = USERS.get(t_logged_by, {}).get('name', t_logged_by)
-                st.caption(f"Logged by: **{creator_name}**")
+                st.caption(f"Logged by: *{creator_name}*")
                 if t_l_loc:
                     st.markdown(f"📍 [Creator GPS Location মানচিত্ৰত চাওক]({t_l_loc})")
             with c_info2:
@@ -271,7 +294,7 @@ else:
 
             if t_docket:
                 eng_display = USERS.get(t_eng, {}).get("name", t_eng)
-                st.info(f"Docket No: **{t_docket}** | Assigned Engineer: **{eng_display}**")
+                st.info(f"Docket No: *{t_docket}* | Assigned Engineer: *{eng_display}*")
 
             if t_rect:
                 st.warning(f"Rectification Notes: {t_rect}")
@@ -292,12 +315,13 @@ else:
             # ২. Service Manager স্তৰ
             if role == "Service Manager" and t_status == "PENDING_SM":
                 c1, c2 = st.columns(2)
-                if c1.button("Approve (Selfie & GPS Certified)", key=f"sm_app_{t_id}"):
+                if c1.button("Approve", key=f"sm_app_{t_id}"):
                     cursor.execute("""
                         UPDATE faults SET status = 'PENDING_DOCKET', action_by_selfie = ?, action_by_loc = ? 
                         WHERE id = ?
                     """, (user_selfie, user_loc, t_id))
                     conn.commit()
+                    send_telegram_alert(f"✅ Fault Approved by SM\nTicket: {t_id}\nManager: {user['name']}\nStatus: PENDING DOCKET")
                     st.rerun()
                 if c2.button("Reject", key=f"sm_rej_{t_id}"):
                     cursor.execute("""
@@ -305,6 +329,7 @@ else:
                         WHERE id = ?
                     """, (user_selfie, user_loc, t_id))
                     conn.commit()
+                    send_telegram_alert(f"❌ Fault REJECTED by SM\nTicket: {t_id}\nManager: {user['name']}")
                     st.rerun()
 
             # ৩. Docket Team স্তৰ
@@ -326,11 +351,13 @@ else:
                             WHERE id = ?
                         """, (d_no, selected_eng, t_id))
                         conn.commit()
+                        eng_name = ENGINEERS_LIST[selected_eng]
+                        send_telegram_alert(f"📋 Docket Assigned\nTicket: {t_id}\nDocket No: {d_no}\nAssigned Engineer: {eng_name}")
                         st.rerun()
                     else:
                         st.error("Docket No দিয়ক!")
 
-            # ৪. Service Engineer স্তৰ
+            # ৪. Service Engineer স্তৰ (কেৱল দায়িত্ব পোৱাজনেহে কৰিব পাৰিব)
             elif role == "Service Engineer" and t_status == "ASSIGNED_ENG":
                 if t_eng == current_username:
                     st.success("🔧 এই কামটো আপোনাক অৰ্পণ কৰা হৈছে:")
@@ -346,17 +373,18 @@ else:
                                 WHERE id = ?
                             """, (notes, rect_photo_path, user_selfie, user_loc, t_id))
                             conn.commit()
+                            send_telegram_alert(f"🔧 Work Completed by Engineer\nTicket: {t_id}\nEngineer: {user['name']}\nStatus: PENDING UT VERIFICATION")
                             st.rerun()
                         else:
                             st.error("Notes লিখাটো বাধ্যতামূলক!")
                 else:
                     assigned_name = USERS.get(t_eng, {}).get("name", t_eng)
-                    st.info(f"🔒 এই কামটো **{assigned_name}**-ক অৰ্পণ কৰা হৈছে।")
+                    st.info(f"🔒 এই কামটো *{assigned_name}*-ক অৰ্পণ কৰা হৈছে।")
 
-            # ৫. Utility Tech Final Verification
+            # ৫. Utility Tech Final Verification (কেৱল Fault বনোৱা টেকনিচিয়ানেহে Close কৰিব পাৰিব)
             elif role == "Utility Technician" and t_status == "PENDING_UT_VERIFY":
                 if t_logged_by == current_username:
-                    st.write("🔍 *আপুনি এই টিকটটো খুলিছিল। পৰীক্ষা কৰি সিদ্ধান্ত লওক:*")
+                    st.write("🔍 আপুনি এই টিকটটো খুলিছিল। পৰীক্ষা কৰি সিদ্ধান্ত লওক:")
                     c1, c2 = st.columns(2)
                     if c1.button("Approve & Close", key=f"ut_app_{t_id}"):
                         now_close = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -365,11 +393,13 @@ else:
                             WHERE id = ?
                         """, (now_close, user_selfie, user_loc, t_id))
                         conn.commit()
+                        send_telegram_alert(f"🎉 Ticket CLOSED Successfully\nTicket: {t_id}\nVerified & Closed by: {user['name']}")
                         st.rerun()
-                    if c2.button("Reject", key=f"ut_rej_{t_id}"):
+                    if c2.button("Reject (Re-assign to Engineer)", key=f"ut_rej_{t_id}"):
                         cursor.execute("UPDATE faults SET status = 'ASSIGNED_ENG' WHERE id = ?", (t_id,))
                         conn.commit()
+                        send_telegram_alert(f"⚠️ Ticket Verification Rejected by UT\nTicket: {t_id}\nRe-opened for Engineer.")
                         st.rerun()
                 else:
                     creator_name = USERS.get(t_logged_by, {}).get("name", t_logged_by)
-                    st.warning(f"🔒 এই Fault টো **{creator_name}**-এ তুলিছিল। কেৱল তেওঁহে Close কৰিব পাৰিব।")
+                    st.warning(f"🔒 এই Fault টো *{creator_name}*-এ তুলিছিল। কেৱল তেওঁহে Close কৰিব পাৰিব।")

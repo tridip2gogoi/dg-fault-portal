@@ -49,7 +49,8 @@ USERS = {
 ENGINEERS_LIST = {u: USERS[u]["name"] for u in USERS if USERS[u]["role"] == "Service Engineer"}
 
 # ----------------- DATABASE SETUP -----------------
-conn = sqlite3.connect("dg_faults.db", check_same_thread=False)
+# ডাটাবেচৰ নাম সলনি কৰি dg_faults_v2.db কৰা হ'ল যাতে সকলো কলম নতুনকৈ সঠিকভাৱে বহে
+conn = sqlite3.connect("dg_faults_v2.db", check_same_thread=False)
 cursor = conn.cursor()
 
 cursor.execute("""
@@ -69,8 +70,8 @@ CREATE TABLE IF NOT EXISTS faults (
     rectification TEXT,
     fault_photo TEXT,
     rect_photo TEXT,
-    created_at TIMESTAMP,
-    closed_at TIMESTAMP
+    created_at TEXT,
+    closed_at TEXT
 )
 """)
 conn.commit()
@@ -213,8 +214,12 @@ else:
                         action_by_selfie, action_by_loc, rectification, 
                         fault_photo, rect_photo, created_at, closed_at
                     )
-                    VALUES (?, ?, ?, ?, 'PENDING_SM', '', '', ?, ?, ?, '', '', '', ?, '', ?, NULL)
-                """, (new_id, site, dg, desc, current_username, user_selfie, user_loc, photo_path, now_time))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    new_id, site, dg, desc, 'PENDING_SM', '', '', 
+                    current_username, user_selfie, user_loc, 
+                    '', '', '', photo_path, '', now_time, None
+                ))
                 conn.commit()
 
                 st.success(f"Fault {new_id} সফলভাৱে যোগ কৰা হ'ল! (Date: {format_dt(now_time)})")

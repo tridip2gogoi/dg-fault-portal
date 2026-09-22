@@ -104,7 +104,13 @@ def save_image_buffer(image_buffer, prefix, user_or_ticket):
         filename = f"{prefix}_{user_or_ticket}_{int(datetime.now().timestamp())}.jpg"
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         with open(filepath, "wb") as f:
-            f.write(image_buffer.get_buffer())
+            # camera_input আৰু file_uploader দুয়োটাৰে বাবে কাম কৰিব
+            if hasattr(image_buffer, "getvalue"):
+                f.write(image_buffer.getvalue())
+            elif hasattr(image_buffer, "get_buffer"):
+                f.write(image_buffer.get_buffer())
+            else:
+                f.write(image_buffer.read())
         return filepath
     return ""
 

@@ -216,7 +216,6 @@ else:
                     VALUES (?, ?, ?, ?, 'PENDING_SM', '', '', ?, ?, ?, '', '', '', ?, '', ?, NULL)
                 """, (new_id, site, dg, desc, current_username, user_selfie, user_loc, photo_path, now_time))
                 conn.commit()
-
                 st.success(f"Fault {new_id} সফলভাৱে যোগ কৰা হ'ল! (Date: {format_dt(now_time)})")
                 st.rerun()
 

@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS faults (
 """)
 conn.commit()
 
+# পুৰণি ডাটাবেচৰ সুৰক্ষাৰ বাবে কলম নিশ্চিত কৰা
 for col in ["logged_by_selfie", "logged_by_loc", "action_by_selfie", "action_by_loc"]:
     try:
         cursor.execute(f"ALTER TABLE faults ADD COLUMN {col} TEXT")
@@ -101,7 +102,6 @@ def save_image_buffer(image_buffer, prefix, user_or_ticket):
     return ""
 
 def format_dt(dt_val):
-    """তাৰিখ আৰু সময় সহজভাৱে সজাই দেখুৱাবলৈ সহায়ক ফাংচন"""
     if not dt_val:
         return ""
     try:
@@ -216,6 +216,7 @@ else:
                     VALUES (?, ?, ?, ?, 'PENDING_SM', '', '', ?, ?, ?, '', '', '', ?, '', ?, NULL)
                 """, (new_id, site, dg, desc, current_username, user_selfie, user_loc, photo_path, now_time))
                 conn.commit()
+
                 st.success(f"Fault {new_id} সফলভাৱে যোগ কৰা হ'ল! (Date: {format_dt(now_time)})")
                 st.rerun()
 
@@ -240,9 +241,7 @@ else:
         created_str = format_dt(t_created_at)
         closed_str = format_dt(t_closed_at)
 
-        # শিৰোনামতে স্পষ্টকৈ তাৰিখ আৰু সময় ওলাব
         with st.expander(f"{t_id} | {t_site} - {t_dg} | [{t_status}] 📅 {created_str}", expanded=(t_status != 'CLOSED')):
-            
             c_meta1, c_meta2 = st.columns(2)
             with c_meta1:
                 st.write(f"🕒 **Fault Logged Date:** {created_str}")
@@ -355,10 +354,11 @@ else:
                     st.write("🔍 *আপুনি এই টিকটটো খুলিছিল। পৰীক্ষা কৰি সিদ্ধান্ত লওক:*")
                     c1, c2 = st.columns(2)
                     if c1.button("Approve & Close", key=f"ut_app_{t_id}"):
+                        now_close = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         cursor.execute("""
                             UPDATE faults SET status = 'CLOSED', closed_at = ?, action_by_selfie = ?, action_by_loc = ? 
                             WHERE id = ?
-                        """, (datetime.now(), user_selfie, user_loc, t_id))
+                        """, (now_close, user_selfie, user_loc, t_id))
                         conn.commit()
                         st.rerun()
                     if c2.button("Reject", key=f"ut_rej_{t_id}"):

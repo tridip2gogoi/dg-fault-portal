@@ -3,6 +3,8 @@ import sqlite3
 import os
 import requests
 import pytz
+import pandas as pd
+import io
 from datetime import datetime, timedelta
 from streamlit_js_eval import get_geolocation
 
@@ -17,7 +19,6 @@ def get_ist_now():
     return datetime.now(ist)
 
 def calculate_trt(created_at_str, closed_at_str=None):
-    """Calculates TRT elapsed time and categorizes priority."""
     if not created_at_str:
         return "N/A", "Unknown", 0.0
     try:
@@ -67,8 +68,8 @@ def send_telegram_alert(message_text):
 
 # ----------------- USER ACCOUNTS -----------------
 USERS = {
-    # Central Supervisor (Access & Approval for ALL JC)
-    "admin": {"password": "admin", "role": "Service Manager", "name": "Central Supervisor (All JC)", "jc": "All"},
+    # Central Supervisor / Owner (Access & Approval for ALL JC)
+    "tridip2gogoi": {"password": "Gogoi$6095", "role": "Circle MIS", "name": "Tridip Gogoi (All JC)", "jc": "All"},
 
     # 27 Utility Technicians
     "tech1": {"password": "123", "role": "Utility Technician", "name": "Anupam Kumer Shing (Tech)"},
@@ -378,8 +379,8 @@ else:
 
         st.divider()
 
-    # ----------------- TRT, JC & SM FILTERED DASHBOARD -----------------
-    st.subheader("📊 Fault Tracker Dashboard")
+    # ----------------- CENTRAL OWNER & SUPERVISOR DASHBOARD -----------------
+    st.subheader("📊 Fault Tracker & Performance Summary")
 
     cursor.execute("""
         SELECT id, site, dg, desc, status, docket, assigned_eng, logged_by, logged_by_selfie, logged_by_loc, action_by_selfie, action_by_loc, rectification, fault_photo, rect_photo, created_at, closed_at 
@@ -387,7 +388,7 @@ else:
     """)
     all_rows = cursor.fetchall()
 
-    # Pre-calculate TRTs and summaries
+    # High-level Metrics Cards
     total_count = len(all_rows)
     pending_sm_count = sum(1 for r in all_rows if r[4] == 'PENDING_SM')
     in_progress_count = sum(1 for r in all_rows if r[4] in ['PENDING_DOCKET', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY'])
@@ -398,6 +399,80 @@ else:
     kpi2.metric("Pending SM Approval", pending_sm_count)
     kpi3.metric("Under Rectification", in_progress_count)
     kpi4.metric("Total Closed", closed_count)
+
+    # ----------------- DATE-WISE & JC-WISE ANALYTICS TABLE (ORDERED) -----------------
+    st.markdown("### 📈 Date-wise & JC-wise Breakdown")
+    st.caption("Owner নিৰীক্ষণৰ বাবে: Log Date-wise Total ➔ Approved Total ➔ Pending Total ➔ Reject Total ➔ Closed Date-wise Total")
+
+    analytics_rows = []
+    for r in all_rows:
+        t_id = r[0]
+        t_site = r[1]
+        t_status = r[4]
+        t_created = r[15]
+        t_closed = r[16]
+
+        t_jc = "Unknown"
+        for jc_opt in JC_LIST:
+            if f"[{jc_opt}]" in t_site:
+                t_jc = jc_opt
+                break
+
+        log_date = t_created.split(" ")[0] if t_created else "N/A"
+        close_date = t_closed.split(" ")[0] if t_closed else "N/A"
+
+        analytics_rows.append({
+            "Ticket ID": t_id,
+            "JC": t_jc,
+            "Log Date": log_date,
+            "Close Date": close_date,
+            "Status": t_status
+        })
+
+    if analytics_rows:
+        df_all = pd.DataFrame(analytics_rows)
+        dates_list = sorted(list(set(df_all["Log Date"].unique()) - {"N/A"}), reverse=True)
+
+        summary_records = []
+        for d in dates_list:
+            d_df = df_all[df_all["Log Date"] == d]
+            for jc in JC_LIST:
+                jc_df = d_df[d_df["JC"] == jc]
+                t_log = len(jc_df)
+                if t_log > 0:
+                    t_approved = len(jc_df[~jc_df["Status"].isin(["PENDING_SM", "REJECTED"])])
+                    t_pending = len(jc_df[jc_df["Status"] == "PENDING_SM"])
+                    t_rejected = len(jc_df[jc_df["Status"] == "REJECTED"])
+                    
+                    # Closed Date-wise: সেই তাৰিখত সেই JC-ত কিমান বন্ধ হ'ল
+                    t_closed_on_date = len(df_all[(df_all["Close Date"] == d) & (df_all["JC"] == jc) & (df_all["Status"] == "CLOSED")])
+
+                    summary_records.append({
+                        "Date": d,
+                        "Job Centre (JC)": jc,
+                        "Log Date-wise Total": t_log,
+                        "Approved Total": t_approved,
+                        "Pending Total": t_pending,
+                        "Reject Total": t_rejected,
+                        "Closed Date-wise Total": t_closed_on_date
+                    })
+
+        summary_df = pd.DataFrame(summary_records)
+        st.dataframe(summary_df, use_container_width=True)
+
+        # Excel Export Button
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+            summary_df.to_excel(writer, index=False, sheet_name="Date_JC_Summary")
+            df_all.to_excel(writer, index=False, sheet_name="All_Tickets_Data")
+
+        st.download_button(
+            label="📥 Download Date-wise & JC-wise Report (Excel)",
+            data=excel_buffer.getvalue(),
+            file_name=f"DG_Summary_Report_{get_ist_now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
 
     st.write("---")
 
@@ -414,24 +489,21 @@ else:
         sm_filter_list = ["All Managers", "Central Supervisor (All JC)", "Ajay Sharma (SM - Shillong)", "Rakesh Ahmed (SM - Tura)", "Saharul (SM - Jowai)"]
         sm_filter = st.selectbox("👤 Filter by Responsible SM:", sm_filter_list)
 
-    # Filter Logic
+    # Filter Rows Logic
     filtered_rows = []
     for r in all_rows:
         t_site = r[1]
         t_created = r[15]
         t_closed = r[16]
 
-        # Extract JC
         t_jc = "Unknown"
         for jc_opt in JC_LIST:
             if f"[{jc_opt}]" in t_site:
                 t_jc = jc_opt
                 break
 
-        # Calculate TRT
         trt_str, trt_cat, trt_hours = calculate_trt(t_created, t_closed)
 
-        # TRT filter matching
         trt_match = True
         if trt_filter != "All TRT":
             if "Normal" in trt_filter and trt_cat != "Normal (< 24h)":
@@ -441,10 +513,8 @@ else:
             elif "Critical" in trt_filter and trt_cat != "Critical (> 48h)":
                 trt_match = False
 
-        # JC filter matching
         jc_match = (jc_filter == "All JCs") or (t_jc == jc_filter)
 
-        # SM filter matching
         sm_match = True
         if sm_filter == "Ajay Sharma (SM - Shillong)":
             sm_match = (t_jc == "Shillong")
@@ -459,7 +529,7 @@ else:
     st.caption(f"Showing **{len(filtered_rows)}** matching tickets out of {total_count}")
 
     if not filtered_rows:
-        st.info("No tickets found matching the selected TRT, JC, and SM filters.")
+        st.info("No tickets found matching the selected filters.")
 
     for item in filtered_rows:
         r, ticket_jc, trt_str, trt_cat = item
@@ -470,7 +540,6 @@ else:
         created_str = format_dt(t_created_at)
         closed_str = format_dt(t_closed_at)
 
-        # Visual badge for TRT priority
         if "Normal" in trt_cat:
             trt_badge = f"🟢 TRT: {trt_str}"
         elif "Warning" in trt_cat:
@@ -524,11 +593,10 @@ else:
                 with c_act2:
                     st.image(t_act_selfie, caption="Action Selfie", width=80)
 
-            # ----------------- SERVICE MANAGER APPROVAL / REJECT -----------------
+            # ----------------- SERVICE MANAGER & OWNER APPROVAL -----------------
             if role == "Service Manager" and t_status == "PENDING_SM":
                 manager_jc = user.get("jc", "")
                 
-                # Check whether current manager is authorized
                 is_authorized = (manager_jc == "All") or (ticket_jc == manager_jc)
 
                 if is_authorized:

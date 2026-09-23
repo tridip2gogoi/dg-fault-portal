@@ -253,7 +253,7 @@ else:
             st.markdown("---")
             st.markdown("📞 **Pre-logging Online Support Details:**")
             
-            support_names_list = ["None / No support contacted"] + list(ENGINEERS_LIST.values()) + list(MANAGERS_LIST.values()) + ["Other (Mention name below)"]
+            support_names_list = ["None / No support contacted"] + ["Other (Mention name below)"] + list(ENGINEERS_LIST.values()) + list(MANAGERS_LIST.values())
             selected_support_person = st.selectbox("Who was contacted for Online Support?", support_names_list)
             
             custom_person_name = ""

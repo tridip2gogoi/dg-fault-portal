@@ -486,7 +486,7 @@ else:
     with f_c2:
         jc_filter = st.selectbox("📍 Filter by Job Centre (JC):", ["All JCs"] + JC_LIST)
     with f_c3:
-        sm_filter_list = ["All Managers", "Central Supervisor (All JC)", "Ajay Sharma (SM - Shillong)", "Rakesh Ahmed (SM - Tura)", "Saharul (SM - Jowai)"]
+        sm_filter_list = ["All Managers", "Owner/Admin (All JC)", "Ajay Sharma (SM - Shillong)", "Rakesh Ahmed (SM - Tura)", "Saharul (SM - Jowai)"]
         sm_filter = st.selectbox("👤 Filter by Responsible SM:", sm_filter_list)
 
     # Filter Rows Logic

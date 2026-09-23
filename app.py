@@ -126,8 +126,9 @@ cursor.execute("DELETE FROM faults WHERE status = 'CLOSED' AND closed_at < ?", (
 conn.commit()
 
 def save_image_buffer(image_buffer, prefix, user_or_ticket):
+    """Saves a single uploaded image or camera buffer and returns the file path."""
     if image_buffer is not None:
-        filename = f"{prefix}_{user_or_ticket}_{int(get_ist_now().timestamp())}.jpg"
+        filename = f"{prefix}_{user_or_ticket}_{int(get_ist_now().timestamp())}_{os.urandom(3).hex()}.jpg"
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         with open(filepath, "wb") as f:
             if hasattr(image_buffer, "getvalue"):
@@ -138,6 +139,31 @@ def save_image_buffer(image_buffer, prefix, user_or_ticket):
                 f.write(image_buffer.read())
         return filepath
     return ""
+
+def save_multiple_images(file_list, prefix, ticket_id):
+    """Saves multiple uploaded files and returns comma-separated file paths."""
+    if not file_list:
+        return ""
+    saved_paths = []
+    for idx, f in enumerate(file_list):
+        path = save_image_buffer(f, f"{prefix}_{idx+1}", ticket_id)
+        if path:
+            saved_paths.append(path)
+    return ",".join(saved_paths)
+
+def display_images_gallery(paths_str, caption_title):
+    """Renders single or multiple comma-separated image paths cleanly."""
+    if not paths_str:
+        return
+    paths = [p.strip() for p in paths_str.split(",") if p.strip()]
+    valid_paths = [p for p in paths if os.path.exists(p)]
+    if not valid_paths:
+        return
+    st.write(f"📸 **{caption_title} ({len(valid_paths)} photo{'s' if len(valid_paths) > 1 else ''}):**")
+    cols = st.columns(min(len(valid_paths), 4))
+    for i, p in enumerate(valid_paths):
+        with cols[i % len(cols)]:
+            st.image(p, caption=f"Photo {i+1}", use_container_width=True)
 
 def format_dt(dt_val):
     if not dt_val:
@@ -228,7 +254,7 @@ else:
 
     st.divider()
 
-    # 1. Utility Technician Form (Fault Log with JC, DG Specs & Online Support)
+    # 1. Utility Technician Form (Fault Log with Multiple Photo Upload)
     if role == "Utility Technician":
         st.subheader("Log New Fault Request")
         with st.form("new_fault_form"):
@@ -253,7 +279,7 @@ else:
             st.markdown("---")
             st.markdown("📞 **Pre-logging Online Support Details:**")
             
-            support_names_list = ["None / No support contacted"] + ["Other (Mention name below)"] + list(ENGINEERS_LIST.values()) + list(MANAGERS_LIST.values())
+            support_names_list = ["None / No support contacted", "Other (Mention name below)"] + list(ENGINEERS_LIST.values()) + list(MANAGERS_LIST.values())
             selected_support_person = st.selectbox("Who was contacted for Online Support?", support_names_list)
             
             custom_person_name = ""
@@ -264,7 +290,13 @@ else:
 
             st.markdown("---")
             desc = st.text_area("Fault Remarks / Description")
-            fault_img = st.file_uploader("Upload Fault Photo", type=["jpg", "png", "jpeg"])
+            
+            # Multiple photo upload enabled
+            fault_imgs = st.file_uploader(
+                "Upload Fault Photos (You can select multiple photos)", 
+                type=["jpg", "png", "jpeg"], 
+                accept_multiple_files=True
+            )
             submit = st.form_submit_button("Submit Fault Request")
 
             if submit and site and desc:
@@ -277,7 +309,9 @@ else:
                 cursor.execute("SELECT COUNT(*) FROM faults")
                 count = cursor.fetchone()[0]
                 new_id = f"TKT-{count + 101}"
-                photo_path = save_image_buffer(fault_img, "fault", new_id)
+                
+                # Save multiple photos
+                photo_paths = save_multiple_images(fault_imgs, "fault", new_id)
 
                 site_with_jc = f"{site} [{selected_jc}]"
                 dg_combined = f"{dg_make} ({dg_rating})"
@@ -300,10 +334,11 @@ else:
                 """, (
                     new_id, site_with_jc, dg_combined, full_desc, 'PENDING_SM', '', '', 
                     current_username, user_selfie, user_loc, 
-                    '', '', '', photo_path, '', now_time, None
+                    '', '', '', photo_paths, '', now_time, None
                 ))
                 conn.commit()
 
+                photo_count = len(fault_imgs) if fault_imgs else 0
                 tg_msg = (
                     f"🚨 *New DG Fault Logged!*\n\n"
                     f"📌 *Ticket ID:* `{new_id}`\n"
@@ -313,12 +348,13 @@ else:
                     f"📞 *Online Support:* {support_final_name}\n"
                     f"💡 *Support Guidance:* {online_sup_remarks if online_sup_remarks else 'N/A'}\n"
                     f"📝 *Fault Remarks:* {desc}\n"
+                    f"📷 *Photos Uploaded:* {photo_count}\n"
                     f"👤 *Logged by:* {user['name']}\n"
                     f"🕒 *Date & Time:* {format_dt(now_time)}"
                 )
                 send_telegram_alert(tg_msg)
 
-                st.success(f"Fault ticket {new_id} created successfully! Telegram notification sent.")
+                st.success(f"Fault ticket {new_id} created successfully with {photo_count} photo(s)! Telegram notification sent.")
                 st.rerun()
             elif submit:
                 st.error("Site ID and Fault Remarks are required!")
@@ -371,8 +407,8 @@ else:
                 if t_l_selfie and os.path.exists(t_l_selfie):
                     st.image(t_l_selfie, caption="Logged Selfie", width=80)
 
-            if t_fphoto and os.path.exists(t_fphoto):
-                st.image(t_fphoto, caption="Fault Photo", width=300)
+            # Display multiple fault photos
+            display_images_gallery(t_fphoto, "Fault Photos")
 
             if t_docket:
                 eng_display = USERS.get(t_eng, {}).get("name", t_eng)
@@ -381,8 +417,8 @@ else:
             if t_rect:
                 st.warning(f"Rectification Notes: {t_rect}")
 
-            if t_rphoto and os.path.exists(t_rphoto):
-                st.image(t_rphoto, caption="Work Photo", width=300)
+            # Display multiple rectification photos
+            display_images_gallery(t_rphoto, "Rectification Photos")
 
             if t_act_selfie and os.path.exists(t_act_selfie):
                 st.write("---")
@@ -449,23 +485,31 @@ else:
                     else:
                         st.error("Please enter a Docket Number.")
 
-            # 4. Service Engineer Stage (Only assigned engineer can rectify)
+            # 4. Service Engineer Stage (With multiple rectification photos upload)
             elif role == "Service Engineer" and t_status == "ASSIGNED_ENG":
                 if t_eng == current_username:
                     st.success("🔧 This ticket is assigned to you:")
                     notes = st.text_area("Work Done / Rectification Notes", key=f"eng_in_{t_id}")
-                    rect_img = st.file_uploader("Upload Post-Work Photo", type=["jpg", "png", "jpeg"], key=f"eng_img_{t_id}")
+                    
+                    # Multiple work photos upload enabled
+                    rect_imgs = st.file_uploader(
+                        "Upload Post-Work Photos (Multiple photos allowed)", 
+                        type=["jpg", "png", "jpeg"], 
+                        accept_multiple_files=True,
+                        key=f"eng_img_{t_id}"
+                    )
                     
                     if st.button("Request Close", key=f"eng_btn_{t_id}"):
                         if notes:
-                            rect_photo_path = save_image_buffer(rect_img, "rect", t_id)
+                            rect_photo_paths = save_multiple_images(rect_imgs, "rect", t_id)
                             cursor.execute("""
                                 UPDATE faults 
                                 SET rectification = ?, rect_photo = ?, status = 'PENDING_UT_VERIFY', action_by_selfie = ?, action_by_loc = ? 
                                 WHERE id = ?
-                            """, (notes, rect_photo_path, user_selfie, user_loc, t_id))
+                            """, (notes, rect_photo_paths, user_selfie, user_loc, t_id))
                             conn.commit()
-                            send_telegram_alert(f"🔧 Work Completed by Engineer\nTicket: {t_id}\nJC: {ticket_jc}\nEngineer: {user['name']}\nStatus: PENDING UT VERIFICATION")
+                            rect_count = len(rect_imgs) if rect_imgs else 0
+                            send_telegram_alert(f"🔧 Work Completed by Engineer\nTicket: {t_id}\nJC: {ticket_jc}\nEngineer: {user['name']}\nWork Photos: {rect_count}\nStatus: PENDING UT VERIFICATION")
                             st.rerun()
                         else:
                             st.error("Rectification notes are mandatory!")
@@ -473,7 +517,7 @@ else:
                     assigned_name = USERS.get(t_eng, {}).get("name", t_eng)
                     st.info(f"🔒 This ticket is assigned to **{assigned_name}**.")
 
-            # 5. Utility Tech Final Verification (Only original creator can close)
+            # 5. Utility Tech Final Verification
             elif role == "Utility Technician" and t_status == "PENDING_UT_VERIFY":
                 if t_logged_by == current_username:
                     st.write("🔍 *You logged this ticket. Please verify work done and decide:*")

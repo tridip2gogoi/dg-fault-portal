@@ -254,7 +254,7 @@ else:
             st.markdown("📞 **Online Support**")
             
             # Valgmuligheder for online support: Teknikere, Ingeniører, Service Managers eller Anden person
-            support_names_list = list(ENGINEERS_LIST.values()) + list(MANAGERS_LIST.values()) + ["Anden person (angiv nedenfor)"]
+            support_names_list = ["SELECT"] + list(ENGINEERS_LIST.values()) + list(MANAGERS_LIST.values()) + ["Anden person (angiv nedenfor)"]
             selected_support_person = st.selectbox("Select support person:", support_names_list)
             
             custom_person_name = ""

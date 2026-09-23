@@ -216,13 +216,13 @@ else:
     if role == "Utility Technician":
         st.subheader("নতুন Fault Log কৰক")
         with st.form("new_fault_form"):
-            site = st.text_input("Site ID (যেনে: GUW-10)")
+            site = st.text_input("Site ID (যেনে: TURA-ENB-6007)")
             
             c_dg1, c_dg2 = st.columns(2)
             with c_dg1:
                 dg_make = st.selectbox(
                     "DG Make", 
-                    ["Kirloskar", "Cummins", "Mahindra Powerol", "Ashok Leyland", "Eicher", "Other"]
+                    ["Kirloskar", "Mahindra", "Eicher"]
                 )
             with c_dg2:
                 dg_rating = st.selectbox(

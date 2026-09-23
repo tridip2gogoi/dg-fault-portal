@@ -227,7 +227,7 @@ else:
             with c_dg2:
                 dg_rating = st.selectbox(
                     "DG Rating (kVA)", 
-                    ["10 kVA", "15 kVA", "20 kVA", "25 kVA", "30 kVA", "40 kVA", "62.5 kVA", "82.5 kVA", "125 kVA", "Other"]
+                    ["10 kVA", "15 kVA", "20 kVA", "25 kVA", "30 kVA", "125 kVA"]
                 )
                 
             desc = st.text_area("Fault Remarks / Description")

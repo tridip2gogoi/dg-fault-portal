@@ -11,10 +11,42 @@ st.set_page_config(page_title="DG Fault Portal", layout="wide")
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# ----------------- IST TIME HELPER -----------------
+# ----------------- IST & TRT TIME HELPERS -----------------
 def get_ist_now():
     ist = pytz.timezone("Asia/Kolkata")
     return datetime.now(ist)
+
+def calculate_trt(created_at_str, closed_at_str=None):
+    """Calculates TRT elapsed time and categorizes priority."""
+    if not created_at_str:
+        return "N/A", "Unknown", 0.0
+    try:
+        clean_created = created_at_str.split(".")[0]
+        c_dt = datetime.strptime(clean_created, "%Y-%m-%d %H:%M:%S")
+        
+        if closed_at_str:
+            clean_closed = closed_at_str.split(".")[0]
+            end_dt = datetime.strptime(clean_closed, "%Y-%m-%d %H:%M:%S")
+        else:
+            end_dt = get_ist_now().replace(tzinfo=None)
+
+        delta = end_dt - c_dt
+        total_seconds = max(0, int(delta.total_seconds()))
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        trt_str = f"{hours}h {minutes}m"
+        total_hours = total_seconds / 3600.0
+
+        if total_hours <= 24:
+            category = "Normal (< 24h)"
+        elif total_hours <= 48:
+            category = "Warning (24-48h)"
+        else:
+            category = "Critical (> 48h)"
+
+        return trt_str, category, total_hours
+    except Exception:
+        return "N/A", "Unknown", 0.0
 
 # ----------------- TELEGRAM BOT CONFIGURATION -----------------
 TELEGRAM_BOT_TOKEN = "8984648592:AAG0JKeI_z5gSrkF5A31AfYTYogmjzvg-FA"
@@ -35,6 +67,9 @@ def send_telegram_alert(message_text):
 
 # ----------------- USER ACCOUNTS -----------------
 USERS = {
+    # Central Supervisor (Access & Approval for ALL JC)
+    "admin": {"password": "admin", "role": "Service Manager", "name": "Central Supervisor (All JC)", "jc": "All"},
+
     # 27 Utility Technicians
     "tech1": {"password": "123", "role": "Utility Technician", "name": "Anupam Kumer Shing (Tech)"},
     "tech2": {"password": "123", "role": "Utility Technician", "name": "Jul Hussain (Tech)"},
@@ -126,7 +161,6 @@ cursor.execute("DELETE FROM faults WHERE status = 'CLOSED' AND closed_at < ?", (
 conn.commit()
 
 def save_image_buffer(image_buffer, prefix, user_or_ticket):
-    """Saves a single uploaded image or camera buffer and returns the file path."""
     if image_buffer is not None:
         filename = f"{prefix}_{user_or_ticket}_{int(get_ist_now().timestamp())}_{os.urandom(3).hex()}.jpg"
         filepath = os.path.join(UPLOAD_FOLDER, filename)
@@ -141,7 +175,6 @@ def save_image_buffer(image_buffer, prefix, user_or_ticket):
     return ""
 
 def save_multiple_images(file_list, prefix, ticket_id):
-    """Saves multiple uploaded files and returns comma-separated file paths."""
     if not file_list:
         return ""
     saved_paths = []
@@ -152,7 +185,6 @@ def save_multiple_images(file_list, prefix, ticket_id):
     return ",".join(saved_paths)
 
 def display_images_gallery(paths_str, caption_title):
-    """Renders single or multiple comma-separated image paths cleanly."""
     if not paths_str:
         return
     paths = [p.strip() for p in paths_str.split(",") if p.strip()]
@@ -236,7 +268,7 @@ else:
     col_t1, col_t2, col_t3 = st.columns([3, 1, 1])
     with col_t1:
         st.title("⚡ DG Fault Portal")
-        jc_badge = f" | Assigned JC: **{user.get('jc')}**" if user.get('jc') else ""
+        jc_badge = f" | Supervised JC: **{user.get('jc')}**" if user.get('jc') else ""
         st.caption(f"Logged in: **{user['name']}** ({current_username}) | Role: **{role}**{jc_badge}")
         if user_loc:
             st.markdown(f"[📍 View Login Location on Google Maps]({user_loc})")
@@ -254,7 +286,7 @@ else:
 
     st.divider()
 
-    # 1. Utility Technician Form (Fault Log with Multiple Photo Upload)
+    # 1. Utility Technician Form
     if role == "Utility Technician":
         st.subheader("Log New Fault Request")
         with st.form("new_fault_form"):
@@ -266,15 +298,9 @@ else:
             
             c_dg1, c_dg2 = st.columns(2)
             with c_dg1:
-                dg_make = st.selectbox(
-                    "DG Make", 
-                    ["Kirloskar", "Mahindra", "Eicher"]
-                )
+                dg_make = st.selectbox("DG Make", ["Kirloskar", "Mahindra", "Eicher"])
             with c_dg2:
-                dg_rating = st.selectbox(
-                    "DG Rating (kVA)", 
-                    ["10 kVA", "15 kVA", "20 kVA", "25 kVA", "30 kVA", "125 kVA"]
-                )
+                dg_rating = st.selectbox("DG Rating (kVA)", ["10 kVA", "15 kVA", "20 kVA", "25 kVA", "30 kVA", "125 kVA"])
 
             st.markdown("---")
             st.markdown("📞 **Pre-logging Online Support Details:**")
@@ -290,17 +316,10 @@ else:
 
             st.markdown("---")
             desc = st.text_area("Fault Remarks / Description")
-            
-            # Multiple photo upload enabled
-            fault_imgs = st.file_uploader(
-                "Upload Fault Photos (You can select multiple photos)", 
-                type=["jpg", "png", "jpeg"], 
-                accept_multiple_files=True
-            )
+            fault_imgs = st.file_uploader("Upload Fault Photos (Multiple allowed)", type=["jpg", "png", "jpeg"], accept_multiple_files=True)
             submit = st.form_submit_button("Submit Fault Request")
 
             if submit and site and desc:
-                # Determine final online support name
                 if selected_support_person == "Other (Mention name below)":
                     support_final_name = custom_person_name.strip() if custom_person_name.strip() else "Other Person"
                 else:
@@ -309,8 +328,6 @@ else:
                 cursor.execute("SELECT COUNT(*) FROM faults")
                 count = cursor.fetchone()[0]
                 new_id = f"TKT-{count + 101}"
-                
-                # Save multiple photos
                 photo_paths = save_multiple_images(fault_imgs, "fault", new_id)
 
                 site_with_jc = f"{site} [{selected_jc}]"
@@ -350,29 +367,102 @@ else:
                     f"📝 *Fault Remarks:* {desc}\n"
                     f"📷 *Photos Uploaded:* {photo_count}\n"
                     f"👤 *Logged by:* {user['name']}\n"
-                    f"🕒 *Date & Time:* {format_dt(now_time)}"
+                    f"🕒 *Date & Time (IST):* {format_dt(now_time)}"
                 )
                 send_telegram_alert(tg_msg)
 
-                st.success(f"Fault ticket {new_id} created successfully with {photo_count} photo(s)! Telegram notification sent.")
+                st.success(f"Fault ticket {new_id} created successfully! Telegram notification sent.")
                 st.rerun()
             elif submit:
                 st.error("Site ID and Fault Remarks are required!")
 
         st.divider()
 
-    st.subheader("Fault Requests & Status Tracker")
+    # ----------------- TRT, JC & SM FILTERED DASHBOARD -----------------
+    st.subheader("📊 Fault Tracker Dashboard")
 
     cursor.execute("""
         SELECT id, site, dg, desc, status, docket, assigned_eng, logged_by, logged_by_selfie, logged_by_loc, action_by_selfie, action_by_loc, rectification, fault_photo, rect_photo, created_at, closed_at 
         FROM faults ORDER BY created_at DESC
     """)
-    rows = cursor.fetchall()
+    all_rows = cursor.fetchall()
 
-    if not rows:
-        st.info("No fault records found.")
+    # Pre-calculate TRTs and summaries
+    total_count = len(all_rows)
+    pending_sm_count = sum(1 for r in all_rows if r[4] == 'PENDING_SM')
+    in_progress_count = sum(1 for r in all_rows if r[4] in ['PENDING_DOCKET', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY'])
+    closed_count = sum(1 for r in all_rows if r[4] == 'CLOSED')
 
-    for r in rows:
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("Total Tickets", total_count)
+    kpi2.metric("Pending SM Approval", pending_sm_count)
+    kpi3.metric("Under Rectification", in_progress_count)
+    kpi4.metric("Total Closed", closed_count)
+
+    st.write("---")
+
+    # Triple Filters: TRT-Wise, JC-Wise, and SM-Wise
+    f_c1, f_c2, f_c3 = st.columns(3)
+    with f_c1:
+        trt_filter = st.selectbox(
+            "⏳ Filter by TRT Aging:",
+            ["All TRT", "🟢 Normal (< 24h)", "🟡 Warning (24-48h)", "🔴 Critical (> 48h)"]
+        )
+    with f_c2:
+        jc_filter = st.selectbox("📍 Filter by Job Centre (JC):", ["All JCs"] + JC_LIST)
+    with f_c3:
+        sm_filter_list = ["All Managers", "Central Supervisor (All JC)", "Ajay Sharma (SM - Shillong)", "Rakesh Ahmed (SM - Tura)", "Saharul (SM - Jowai)"]
+        sm_filter = st.selectbox("👤 Filter by Responsible SM:", sm_filter_list)
+
+    # Filter Logic
+    filtered_rows = []
+    for r in all_rows:
+        t_site = r[1]
+        t_created = r[15]
+        t_closed = r[16]
+
+        # Extract JC
+        t_jc = "Unknown"
+        for jc_opt in JC_LIST:
+            if f"[{jc_opt}]" in t_site:
+                t_jc = jc_opt
+                break
+
+        # Calculate TRT
+        trt_str, trt_cat, trt_hours = calculate_trt(t_created, t_closed)
+
+        # TRT filter matching
+        trt_match = True
+        if trt_filter != "All TRT":
+            if "Normal" in trt_filter and trt_cat != "Normal (< 24h)":
+                trt_match = False
+            elif "Warning" in trt_filter and trt_cat != "Warning (24-48h)":
+                trt_match = False
+            elif "Critical" in trt_filter and trt_cat != "Critical (> 48h)":
+                trt_match = False
+
+        # JC filter matching
+        jc_match = (jc_filter == "All JCs") or (t_jc == jc_filter)
+
+        # SM filter matching
+        sm_match = True
+        if sm_filter == "Ajay Sharma (SM - Shillong)":
+            sm_match = (t_jc == "Shillong")
+        elif sm_filter == "Rakesh Ahmed (SM - Tura)":
+            sm_match = (t_jc == "Tura")
+        elif sm_filter == "Saharul (SM - Jowai)":
+            sm_match = (t_jc == "Jowai")
+
+        if trt_match and jc_match and sm_match:
+            filtered_rows.append((r, t_jc, trt_str, trt_cat))
+
+    st.caption(f"Showing **{len(filtered_rows)}** matching tickets out of {total_count}")
+
+    if not filtered_rows:
+        st.info("No tickets found matching the selected TRT, JC, and SM filters.")
+
+    for item in filtered_rows:
+        r, ticket_jc, trt_str, trt_cat = item
         (t_id, t_site, t_dg, t_desc, t_status, t_docket, t_eng, t_logged_by, 
          t_l_selfie, t_l_loc, t_act_selfie, t_act_loc, t_rect, t_fphoto, t_rphoto, 
          t_created_at, t_closed_at) = r
@@ -380,19 +470,25 @@ else:
         created_str = format_dt(t_created_at)
         closed_str = format_dt(t_closed_at)
 
-        ticket_jc = "Unknown"
-        for jc_opt in JC_LIST:
-            if f"[{jc_opt}]" in t_site:
-                ticket_jc = jc_opt
-                break
+        # Visual badge for TRT priority
+        if "Normal" in trt_cat:
+            trt_badge = f"🟢 TRT: {trt_str}"
+        elif "Warning" in trt_cat:
+            trt_badge = f"🟡 TRT: {trt_str}"
+        else:
+            trt_badge = f"🔴 TRT: {trt_str} (Critical)"
 
-        with st.expander(f"{t_id} | {t_site} - {t_dg} | [{t_status}] 📅 {created_str}", expanded=(t_status != 'CLOSED')):
-            c_meta1, c_meta2 = st.columns(2)
+        with st.expander(f"{t_id} | {t_site} - {t_dg} | [{t_status}] | {trt_badge} 📅 {created_str}", expanded=(t_status != 'CLOSED')):
+            c_meta1, c_meta2, c_meta3 = st.columns(3)
             with c_meta1:
                 st.write(f"🕒 **Logged Date (IST):** {created_str}")
             with c_meta2:
                 if t_status == "CLOSED" and closed_str:
                     st.write(f"✅ **Closed Date (IST):** {closed_str}")
+                else:
+                    st.write(f"⏱️ **Active Elapsed TRT:** **{trt_str}**")
+            with c_meta3:
+                st.write(f"🏷️ **TRT Category:** {trt_cat}")
 
             st.write(f"**Fault Details & Online Support:**")
             st.info(t_desc)
@@ -407,7 +503,6 @@ else:
                 if t_l_selfie and os.path.exists(t_l_selfie):
                     st.image(t_l_selfie, caption="Logged Selfie", width=80)
 
-            # Display multiple fault photos
             display_images_gallery(t_fphoto, "Fault Photos")
 
             if t_docket:
@@ -417,7 +512,6 @@ else:
             if t_rect:
                 st.warning(f"Rectification Notes: {t_rect}")
 
-            # Display multiple rectification photos
             display_images_gallery(t_rphoto, "Rectification Photos")
 
             if t_act_selfie and os.path.exists(t_act_selfie):
@@ -430,27 +524,44 @@ else:
                 with c_act2:
                     st.image(t_act_selfie, caption="Action Selfie", width=80)
 
-            # 2. Service Manager Stage (JC-Enforced)
+            # ----------------- SERVICE MANAGER APPROVAL / REJECT -----------------
             if role == "Service Manager" and t_status == "PENDING_SM":
                 manager_jc = user.get("jc", "")
-                if ticket_jc == manager_jc:
-                    st.success(f"✔️ This ticket belongs to your jurisdiction ({manager_jc} JC).")
+                
+                # Check whether current manager is authorized
+                is_authorized = (manager_jc == "All") or (ticket_jc == manager_jc)
+
+                if is_authorized:
+                    st.success(f"✔️ You hold approval authority for **{ticket_jc} JC** | Elapsed TRT: **{trt_str}**")
                     c1, c2 = st.columns(2)
-                    if c1.button("Approve", key=f"sm_app_{t_id}"):
+                    if c1.button("✅ Approve", key=f"sm_app_{t_id}"):
                         cursor.execute("""
                             UPDATE faults SET status = 'PENDING_DOCKET', action_by_selfie = ?, action_by_loc = ? 
                             WHERE id = ?
                         """, (user_selfie, user_loc, t_id))
                         conn.commit()
-                        send_telegram_alert(f"✅ Fault Approved by SM\nTicket: {t_id}\nJC: {ticket_jc}\nManager: {user['name']}\nStatus: PENDING DOCKET")
+                        send_telegram_alert(
+                            f"✅ Fault APPROVED by SM\n"
+                            f"Ticket: {t_id}\n"
+                            f"JC: {ticket_jc}\n"
+                            f"TRT at Approval: {trt_str}\n"
+                            f"Manager: {user['name']}\n"
+                            f"Status: PENDING DOCKET"
+                        )
                         st.rerun()
-                    if c2.button("Reject", key=f"sm_rej_{t_id}"):
+                    if c2.button("❌ Reject", key=f"sm_rej_{t_id}"):
                         cursor.execute("""
                             UPDATE faults SET status = 'REJECTED', action_by_selfie = ?, action_by_loc = ? 
                             WHERE id = ?
                         """, (user_selfie, user_loc, t_id))
                         conn.commit()
-                        send_telegram_alert(f"❌ Fault REJECTED by SM\nTicket: {t_id}\nJC: {ticket_jc}\nManager: {user['name']}")
+                        send_telegram_alert(
+                            f"❌ Fault REJECTED by SM\n"
+                            f"Ticket: {t_id}\n"
+                            f"JC: {ticket_jc}\n"
+                            f"TRT at Rejection: {trt_str}\n"
+                            f"Manager: {user['name']}"
+                        )
                         st.rerun()
                 else:
                     assigned_sm_name = "Assigned SM"
@@ -458,7 +569,7 @@ else:
                         if u.get("role") == "Service Manager" and u.get("jc") == ticket_jc:
                             assigned_sm_name = u.get("name")
                             break
-                    st.warning(f"🔒 This ticket belongs to **{ticket_jc}** JC. Only **{assigned_sm_name}** is authorized to approve/reject.")
+                    st.warning(f"🔒 Ticket belongs to **{ticket_jc} JC**. Only **{assigned_sm_name}** or the **Central Supervisor** can approve/reject.")
 
             # 3. Docket Team Stage
             elif role == "Docket Team" and t_status == "PENDING_DOCKET":
@@ -480,24 +591,17 @@ else:
                         """, (d_no, selected_eng, t_id))
                         conn.commit()
                         eng_name = ENGINEERS_LIST[selected_eng]
-                        send_telegram_alert(f"📋 Docket Assigned\nTicket: {t_id}\nJC: {ticket_jc}\nDocket No: {d_no}\nAssigned Engineer: {eng_name}")
+                        send_telegram_alert(f"📋 Docket Assigned\nTicket: {t_id}\nJC: {ticket_jc}\nTRT: {trt_str}\nDocket No: {d_no}\nAssigned Engineer: {eng_name}")
                         st.rerun()
                     else:
                         st.error("Please enter a Docket Number.")
 
-            # 4. Service Engineer Stage (With multiple rectification photos upload)
+            # 4. Service Engineer Stage
             elif role == "Service Engineer" and t_status == "ASSIGNED_ENG":
                 if t_eng == current_username:
                     st.success("🔧 This ticket is assigned to you:")
                     notes = st.text_area("Work Done / Rectification Notes", key=f"eng_in_{t_id}")
-                    
-                    # Multiple work photos upload enabled
-                    rect_imgs = st.file_uploader(
-                        "Upload Post-Work Photos (Multiple photos allowed)", 
-                        type=["jpg", "png", "jpeg"], 
-                        accept_multiple_files=True,
-                        key=f"eng_img_{t_id}"
-                    )
+                    rect_imgs = st.file_uploader("Upload Post-Work Photos (Multiple allowed)", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"eng_img_{t_id}")
                     
                     if st.button("Request Close", key=f"eng_btn_{t_id}"):
                         if notes:
@@ -509,7 +613,7 @@ else:
                             """, (notes, rect_photo_paths, user_selfie, user_loc, t_id))
                             conn.commit()
                             rect_count = len(rect_imgs) if rect_imgs else 0
-                            send_telegram_alert(f"🔧 Work Completed by Engineer\nTicket: {t_id}\nJC: {ticket_jc}\nEngineer: {user['name']}\nWork Photos: {rect_count}\nStatus: PENDING UT VERIFICATION")
+                            send_telegram_alert(f"🔧 Work Completed by Engineer\nTicket: {t_id}\nJC: {ticket_jc}\nTRT: {trt_str}\nEngineer: {user['name']}\nWork Photos: {rect_count}\nStatus: PENDING UT VERIFICATION")
                             st.rerun()
                         else:
                             st.error("Rectification notes are mandatory!")
@@ -529,12 +633,12 @@ else:
                             WHERE id = ?
                         """, (now_close, user_selfie, user_loc, t_id))
                         conn.commit()
-                        send_telegram_alert(f"🎉 Ticket CLOSED Successfully\nTicket: {t_id}\nJC: {ticket_jc}\nVerified & Closed by: {user['name']}")
+                        send_telegram_alert(f"🎉 Ticket CLOSED Successfully\nTicket: {t_id}\nJC: {ticket_jc}\nTotal Resolution TRT: {trt_str}\nVerified & Closed by: {user['name']}")
                         st.rerun()
                     if c2.button("Reject (Re-assign to Engineer)", key=f"ut_rej_{t_id}"):
                         cursor.execute("UPDATE faults SET status = 'ASSIGNED_ENG' WHERE id = ?", (t_id,))
                         conn.commit()
-                        send_telegram_alert(f"⚠️ Ticket Verification Rejected by UT\nTicket: {t_id}\nJC: {ticket_jc}\nRe-opened for Engineer.")
+                        send_telegram_alert(f"⚠️ Ticket Verification Rejected by UT\nTicket: {t_id}\nJC: {ticket_jc}\nTRT: {trt_str}\nRe-opened for Engineer.")
                         st.rerun()
                 else:
                     creator_name = USERS.get(t_logged_by, {}).get("name", t_logged_by)

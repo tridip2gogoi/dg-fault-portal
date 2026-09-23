@@ -1,4 +1,6 @@
 streamlit
-pandas
 streamlit-js-eval
+requests
 pytz
+pandas
+openpyxl

@@ -12,7 +12,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # ----------------- TELEGRAM BOT CONFIGURATION -----------------
 TELEGRAM_BOT_TOKEN = "8984648592:AAG0JKeI_z5gSrkF5A31AfYTYogmjzvg-FA"
-TELEGRAM_CHAT_ID = "-1003596057592"
+TELEGRAM_CHAT_ID = "-1003996057592"
 
 def send_telegram_alert(message_text):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -29,6 +29,7 @@ def send_telegram_alert(message_text):
 
 # ----------------- USER ACCOUNTS -----------------
 USERS = {
+    # 27 Utility Technicians
     "tech1": {"password": "123", "role": "Utility Technician", "name": "Anupam Kumer Shing (Tech)"},
     "tech2": {"password": "123", "role": "Utility Technician", "name": "Jul Hussain (Tech)"},
     "tech3": {"password": "123", "role": "Utility Technician", "name": "Shariful Islam (Tech)"},
@@ -56,10 +57,16 @@ USERS = {
     "tech25": {"password": "123", "role": "Utility Technician", "name": "Walseng B Marak (Tech)"},
     "tech26": {"password": "123", "role": "Utility Technician", "name": "Zeaul Hoque (Tech)"},
     "tech27": {"password": "123", "role": "Utility Technician", "name": "Dharamveer (Tech)"},
+    
+    # 3 Service Managers
     "manager1": {"password": "2026", "role": "Service Manager", "name": "Ajay Sharma (SM)"},
     "manager2": {"password": "2026", "role": "Service Manager", "name": "Rakesh Ahmed (SM)"},
     "manager3": {"password": "2026", "role": "Service Manager", "name": "Saharul (SM)"},
+    
+    # Docket Team
     "docket": {"password": "2027", "role": "Docket Team", "name": "Docket Desk"},
+    
+    # 15 Service Engineers
     "eng1": {"password": "124", "role": "Service Engineer", "name": "Harnual Roshid (Engineer)"},
     "eng2": {"password": "124", "role": "Service Engineer", "name": "Krishna Kanta Hazarika (Engineer)"},
     "eng3": {"password": "124", "role": "Service Engineer", "name": "Shaha Alom (Engineer)"},
@@ -74,7 +81,7 @@ USERS = {
     "eng12": {"password": "124", "role": "Service Engineer", "name": "Alexbirth Sangma (Engineer)"},
     "eng13": {"password": "124", "role": "Service Engineer", "name": "Habizul Rahman (Engineer)"},
     "eng14": {"password": "124", "role": "Service Engineer", "name": "Stebirth Sangma (Engineer)"},
-    "eng15": {"password": "124", "role": "Service Engineer", "name": "Khairul Islam (Engineer)"},
+    "eng15": {"password": "124", "role": "Service Engineer", "name": "Khairul Islam (Engineer)"}
 }
 
 ENGINEERS_LIST = {u: USERS[u]["name"] for u in USERS if USERS[u]["role"] == "Service Engineer"}
@@ -216,18 +223,18 @@ else:
     if role == "Utility Technician":
         st.subheader("নতুন Fault Log কৰক")
         with st.form("new_fault_form"):
-            site = st.text_input("Site ID (যেনে: TURA-ENB-6007)")
+            site = st.text_input("Site ID (যেনে: GUW-10)")
             
             c_dg1, c_dg2 = st.columns(2)
             with c_dg1:
                 dg_make = st.selectbox(
                     "DG Make", 
-                    ["Kirloskar", "Mahindra", "Eicher"]
+                    ["Kirloskar", "Cummins", "Mahindra Powerol", "Ashok Leyland", "Eicher", "Other"]
                 )
             with c_dg2:
                 dg_rating = st.selectbox(
                     "DG Rating (kVA)", 
-                    ["10 kVA", "15 kVA", "20 kVA", "25 kVA", "30 kVA", "125 kVA"]
+                    ["10 kVA", "15 kVA", "20 kVA", "25 kVA", "30 kVA", "40 kVA", "62.5 kVA", "82.5 kVA", "125 kVA", "Other"]
                 )
                 
             desc = st.text_area("Fault Remarks / Description")
@@ -270,7 +277,7 @@ else:
                 )
                 send_telegram_alert(tg_msg)
 
-                st.success(f"Fault {new_id} সফলভাৱে যোগ কৰা হ'ল!")
+                st.success(f"Fault {new_id} সফলভাৱে যোগ কৰা হ'ল! Telegram-ত Alert পঠিওৱা হৈছে।")
                 st.rerun()
             elif submit:
                 st.error("Site ID আৰু Fault Remarks লিখাটো বাধ্যতামূলক!")
@@ -384,7 +391,7 @@ else:
                     else:
                         st.error("Docket No দিয়ক!")
 
-            # ৪. Service Engineer স্তৰ
+            # ৪. Service Engineer স্তৰ (কেৱল দায়িত্ব পোৱা ইঞ্জিনীয়াৰেহে কাম কৰিব পাৰিব)
             elif role == "Service Engineer" and t_status == "ASSIGNED_ENG":
                 if t_eng == current_username:
                     st.success("🔧 এই কামটো আপোনাক অৰ্পণ কৰা হৈছে:")
@@ -408,7 +415,7 @@ else:
                     assigned_name = USERS.get(t_eng, {}).get("name", t_eng)
                     st.info(f"🔒 এই কামটো **{assigned_name}**-ক অৰ্পণ কৰা হৈছে।")
 
-            # ৫. Utility Tech Final Verification
+            # ৫. Utility Tech Final Verification (কেৱল Fault বনোৱা টেকনিচিয়ানেহে Close কৰিব পাৰিব)
             elif role == "Utility Technician" and t_status == "PENDING_UT_VERIFY":
                 if t_logged_by == current_username:
                     st.write("🔍 *আপুনি এই টিকটটো খুলিছিল। পৰীক্ষা কৰি সিদ্ধান্ত লওক:*")

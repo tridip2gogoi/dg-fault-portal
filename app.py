@@ -68,7 +68,7 @@ def send_telegram_alert(message_text):
 
 # ----------------- USER ACCOUNTS -----------------
 USERS = {
-    # Central Supervisor / Owner (Access & Approval for ALL JC)
+    # Owner (Access & Approval for ALL JC)
     "tridip2gogoi": {"password": "Gogoi$6095", "role": "Circle MIS", "name": "Tridip Gogoi (All JC)", "jc": "All"},
 
     # 27 Utility Technicians

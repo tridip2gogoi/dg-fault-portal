@@ -64,10 +64,10 @@ USERS = {
     "tech26": {"password": "123", "role": "Utility Technician", "name": "Zeaul Hoque (Tech)"},
     "tech27": {"password": "123", "role": "Utility Technician", "name": "Dharamveer (Tech)"},
     
-    # 3 Service Managers
-    "manager1": {"password": "2026", "role": "Service Manager", "name": "Ajay Sharma (SM)"},
-    "manager2": {"password": "2026", "role": "Service Manager", "name": "Rakesh Ahmed (SM)"},
-    "manager3": {"password": "2026", "role": "Service Manager", "name": "Saharul (SM)"},
+    # 3 Service Managers (JC Mapped)
+    "manager1": {"password": "2026", "role": "Service Manager", "name": "Ajay Sharma (SM)", "jc": "Shillong"},
+    "manager2": {"password": "2026", "role": "Service Manager", "name": "Rakesh Ahmed (SM)", "jc": "Tura"},
+    "manager3": {"password": "2026", "role": "Service Manager", "name": "Saharul (SM)", "jc": "Jowai"},
     
     # Docket Team
     "docket": {"password": "2027", "role": "Docket Team", "name": "Docket Desk"},
@@ -91,6 +91,7 @@ USERS = {
 }
 
 ENGINEERS_LIST = {u: USERS[u]["name"] for u in USERS if USERS[u]["role"] == "Service Engineer"}
+JC_LIST = ["Tura", "Shillong", "Jowai"]
 
 # ----------------- DATABASE SETUP -----------------
 conn = sqlite3.connect("dg_faults_v2.db", check_same_thread=False)
@@ -208,7 +209,8 @@ else:
     col_t1, col_t2, col_t3 = st.columns([3, 1, 1])
     with col_t1:
         st.title("⚡ DG Fault Portal")
-        st.caption(f"Logged in: **{user['name']}** ({current_username}) | Role: **{role}**")
+        jc_badge = f" | Assigned JC: **{user.get('jc')}**" if user.get('jc') else ""
+        st.caption(f"Logged in: **{user['name']}** ({current_username}) | Role: **{role}**{jc_badge}")
         if user_loc:
             st.markdown(f"[📍 আপোনাৰ Login Location চাওক]({user_loc})")
     with col_t2:
@@ -225,11 +227,15 @@ else:
 
     st.divider()
 
-    # ১. Utility Technician Form (Fault Log)
+    # ১. Utility Technician Form (Fault Log with JC selection)
     if role == "Utility Technician":
         st.subheader("নতুন Fault Log কৰক")
         with st.form("new_fault_form"):
-            site = st.text_input("Site ID (যেনে: GUW-10)")
+            c_site, c_jc = st.columns([2, 1])
+            with c_site:
+                site = st.text_input("Site ID (যেনে: GUW-10)")
+            with c_jc:
+                selected_jc = st.selectbox("Job Centre (JC)", JC_LIST)
             
             c_dg1, c_dg2 = st.columns(2)
             with c_dg1:
@@ -253,6 +259,8 @@ else:
                 new_id = f"TKT-{count + 101}"
                 photo_path = save_image_buffer(fault_img, "fault", new_id)
 
+                # ছাইটৰ লগতে JC টেগ কৰি সংৰক্ষণ কৰা হৈছে
+                site_with_jc = f"{site} [{selected_jc}]"
                 dg_combined = f"{dg_make} ({dg_rating})"
                 now_time = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -265,7 +273,7 @@ else:
                     )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    new_id, site, dg_combined, desc, 'PENDING_SM', '', '', 
+                    new_id, site_with_jc, dg_combined, desc, 'PENDING_SM', '', '', 
                     current_username, user_selfie, user_loc, 
                     '', '', '', photo_path, '', now_time, None
                 ))
@@ -275,6 +283,7 @@ else:
                     f"🚨 নতুন DG Fault Logged!\n\n"
                     f"Ticket: {new_id}\n"
                     f"Site ID: {site}\n"
+                    f"JC: {selected_jc}\n"
                     f"DG Make: {dg_make}\n"
                     f"DG Rating: {dg_rating}\n"
                     f"Fault Remarks: {desc}\n"
@@ -309,6 +318,13 @@ else:
         created_str = format_dt(t_created_at)
         closed_str = format_dt(t_closed_at)
 
+        # ছাইটৰ পৰা JC চিনাক্ত কৰা
+        ticket_jc = "Unknown"
+        for jc_opt in JC_LIST:
+            if f"[{jc_opt}]" in t_site:
+                ticket_jc = jc_opt
+                break
+
         with st.expander(f"{t_id} | {t_site} - {t_dg} | [{t_status}] 📅 {created_str}", expanded=(t_status != 'CLOSED')):
             c_meta1, c_meta2 = st.columns(2)
             with c_meta1:
@@ -322,7 +338,7 @@ else:
             c_info1, c_info2 = st.columns([3, 1])
             with c_info1:
                 creator_name = USERS.get(t_logged_by, {}).get('name', t_logged_by)
-                st.caption(f"Logged by: **{creator_name}**")
+                st.caption(f"Logged by: **{creator_name}** | JC: **{ticket_jc}**")
                 if t_l_loc:
                     st.markdown(f"📍 [Creator GPS Location মানচিত্ৰত চাওক]({t_l_loc})")
             with c_info2:
@@ -352,25 +368,36 @@ else:
                 with c_act2:
                     st.image(t_act_selfie, caption="Action Selfie", width=80)
 
-            # ২. Service Manager স্তৰ
+            # ২. Service Manager স্তৰ (JC Wise কঢ়া নিৰাপত্তা)
             if role == "Service Manager" and t_status == "PENDING_SM":
-                c1, c2 = st.columns(2)
-                if c1.button("Approve", key=f"sm_app_{t_id}"):
-                    cursor.execute("""
-                        UPDATE faults SET status = 'PENDING_DOCKET', action_by_selfie = ?, action_by_loc = ? 
-                        WHERE id = ?
-                    """, (user_selfie, user_loc, t_id))
-                    conn.commit()
-                    send_telegram_alert(f"✅ Fault Approved by SM\nTicket: {t_id}\nManager: {user['name']}\nStatus: PENDING DOCKET")
-                    st.rerun()
-                if c2.button("Reject", key=f"sm_rej_{t_id}"):
-                    cursor.execute("""
-                        UPDATE faults SET status = 'REJECTED', action_by_selfie = ?, action_by_loc = ? 
-                        WHERE id = ?
-                    """, (user_selfie, user_loc, t_id))
-                    conn.commit()
-                    send_telegram_alert(f"❌ Fault REJECTED by SM\nTicket: {t_id}\nManager: {user['name']}")
-                    st.rerun()
+                manager_jc = user.get("jc", "")
+                if ticket_jc == manager_jc:
+                    st.success(f"✔️ এই টিকটটো আপোনাৰ অধীনৰ ({manager_jc} JC)")
+                    c1, c2 = st.columns(2)
+                    if c1.button("Approve", key=f"sm_app_{t_id}"):
+                        cursor.execute("""
+                            UPDATE faults SET status = 'PENDING_DOCKET', action_by_selfie = ?, action_by_loc = ? 
+                            WHERE id = ?
+                        """, (user_selfie, user_loc, t_id))
+                        conn.commit()
+                        send_telegram_alert(f"✅ Fault Approved by SM\nTicket: {t_id}\nJC: {ticket_jc}\nManager: {user['name']}\nStatus: PENDING DOCKET")
+                        st.rerun()
+                    if c2.button("Reject", key=f"sm_rej_{t_id}"):
+                        cursor.execute("""
+                            UPDATE faults SET status = 'REJECTED', action_by_selfie = ?, action_by_loc = ? 
+                            WHERE id = ?
+                        """, (user_selfie, user_loc, t_id))
+                        conn.commit()
+                        send_telegram_alert(f"❌ Fault REJECTED by SM\nTicket: {t_id}\nJC: {ticket_jc}\nManager: {user['name']}")
+                        st.rerun()
+                else:
+                    # উপযুক্ত মেনেজাৰৰ নাম বিচৰা
+                    assigned_sm_name = "Assigned SM"
+                    for u in USERS.values():
+                        if u.get("role") == "Service Manager" and u.get("jc") == ticket_jc:
+                            assigned_sm_name = u.get("name")
+                            break
+                    st.warning(f"🔒 এই টিকটটো **{ticket_jc}** JC-ৰ অন্তৰ্গত। কেৱল **{assigned_sm_name}**-এহে অনুমোদন জনাব পাৰিব।")
 
             # ৩. Docket Team স্তৰ
             elif role == "Docket Team" and t_status == "PENDING_DOCKET":
@@ -392,7 +419,7 @@ else:
                         """, (d_no, selected_eng, t_id))
                         conn.commit()
                         eng_name = ENGINEERS_LIST[selected_eng]
-                        send_telegram_alert(f"📋 Docket Assigned\nTicket: {t_id}\nDocket No: {d_no}\nAssigned Engineer: {eng_name}")
+                        send_telegram_alert(f"📋 Docket Assigned\nTicket: {t_id}\nJC: {ticket_jc}\nDocket No: {d_no}\nAssigned Engineer: {eng_name}")
                         st.rerun()
                     else:
                         st.error("Docket No দিয়ক!")
@@ -413,7 +440,7 @@ else:
                                 WHERE id = ?
                             """, (notes, rect_photo_path, user_selfie, user_loc, t_id))
                             conn.commit()
-                            send_telegram_alert(f"🔧 Work Completed by Engineer\nTicket: {t_id}\nEngineer: {user['name']}\nStatus: PENDING UT VERIFICATION")
+                            send_telegram_alert(f"🔧 Work Completed by Engineer\nTicket: {t_id}\nJC: {ticket_jc}\nEngineer: {user['name']}\nStatus: PENDING UT VERIFICATION")
                             st.rerun()
                         else:
                             st.error("Notes লিখাটো বাধ্যতামূলক!")
@@ -433,12 +460,12 @@ else:
                             WHERE id = ?
                         """, (now_close, user_selfie, user_loc, t_id))
                         conn.commit()
-                        send_telegram_alert(f"🎉 Ticket CLOSED Successfully\nTicket: {t_id}\nVerified & Closed by: {user['name']}")
+                        send_telegram_alert(f"🎉 Ticket CLOSED Successfully\nTicket: {t_id}\nJC: {ticket_jc}\nVerified & Closed by: {user['name']}")
                         st.rerun()
                     if c2.button("Reject (Re-assign to Engineer)", key=f"ut_rej_{t_id}"):
                         cursor.execute("UPDATE faults SET status = 'ASSIGNED_ENG' WHERE id = ?", (t_id,))
                         conn.commit()
-                        send_telegram_alert(f"⚠️ Ticket Verification Rejected by UT\nTicket: {t_id}\nRe-opened for Engineer.")
+                        send_telegram_alert(f"⚠️ Ticket Verification Rejected by UT\nTicket: {t_id}\nJC: {ticket_jc}\nRe-opened for Engineer.")
                         st.rerun()
                 else:
                     creator_name = USERS.get(t_logged_by, {}).get("name", t_logged_by)

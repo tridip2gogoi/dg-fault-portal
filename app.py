@@ -60,8 +60,21 @@ USERS = {
     "manager2": {"password": "2026", "role": "Service Manager", "name": "Rakesh Ahmed (SM)"},
     "manager3": {"password": "2026", "role": "Service Manager", "name": "Saharul (SM)"},
     "docket": {"password": "2027", "role": "Docket Team", "name": "Docket Desk"},
-    "eng1": {"password": "124", "role": "Service Engineer", "name": "Biren (Engineer)"},
-    "eng2": {"password": "124", "role": "Service Engineer", "name": "Anup (Engineer)"}
+    "eng1": {"password": "124", "role": "Service Engineer", "name": "Harnual Roshid (Engineer)"},
+    "eng2": {"password": "124", "role": "Service Engineer", "name": "Krishna Kanta Hazarika (Engineer)"},
+    "eng3": {"password": "124", "role": "Service Engineer", "name": "Shaha Alom (Engineer)"},
+    "eng4": {"password": "124", "role": "Service Engineer", "name": "Suman Kumar (Engineer)"},
+    "eng5": {"password": "124", "role": "Service Engineer", "name": "Belikson Momin (Engineer)"},
+    "eng6": {"password": "124", "role": "Service Engineer", "name": "Sengvear Momin (Engineer)"},
+    "eng7": {"password": "124", "role": "Service Engineer", "name": "Ramij Ali (Engineer)"},
+    "eng8": {"password": "124", "role": "Service Engineer", "name": "George Momin (Engineer)"},
+    "eng9": {"password": "124", "role": "Service Engineer", "name": "Mofidul Islam (Engineer)"},
+    "eng10": {"password": "124", "role": "Service Engineer", "name": "Binod Sangma (Engineer)"},
+    "eng11": {"password": "124", "role": "Service Engineer", "name": "Rakibul Islam (Engineer)"},
+    "eng12": {"password": "124", "role": "Service Engineer", "name": "Alexbirth Sangma (Engineer)"},
+    "eng13": {"password": "124", "role": "Service Engineer", "name": "Habizul Rahman (Engineer)"},
+    "eng14": {"password": "124", "role": "Service Engineer", "name": "Stebirth Sangma (Engineer)"},
+    "eng15": {"password": "124", "role": "Service Engineer", "name": "Khairul Islam (Engineer)"},
 }
 
 ENGINEERS_LIST = {u: USERS[u]["name"] for u in USERS if USERS[u]["role"] == "Service Engineer"}

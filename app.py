@@ -2,6 +2,7 @@ import streamlit as st
 import sqlite3
 import os
 import requests
+import pytz
 from datetime import datetime, timedelta
 from streamlit_js_eval import get_geolocation
 
@@ -9,6 +10,11 @@ st.set_page_config(page_title="DG Fault Portal", layout="wide")
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# ----------------- IST TIME HELPER -----------------
+def get_ist_now():
+    ist = pytz.timezone("Asia/Kolkata")
+    return datetime.now(ist)
 
 # ----------------- TELEGRAM BOT CONFIGURATION -----------------
 TELEGRAM_BOT_TOKEN = "8984648592:AAG0JKeI_z5gSrkF5A31AfYTYogmjzvg-FA"
@@ -113,13 +119,13 @@ CREATE TABLE IF NOT EXISTS faults (
 """)
 conn.commit()
 
-thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+thirty_days_ago = (get_ist_now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
 cursor.execute("DELETE FROM faults WHERE status = 'CLOSED' AND closed_at < ?", (thirty_days_ago,))
 conn.commit()
 
 def save_image_buffer(image_buffer, prefix, user_or_ticket):
     if image_buffer is not None:
-        filename = f"{prefix}_{user_or_ticket}_{int(datetime.now().timestamp())}.jpg"
+        filename = f"{prefix}_{user_or_ticket}_{int(get_ist_now().timestamp())}.jpg"
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         with open(filepath, "wb") as f:
             if hasattr(image_buffer, "getvalue"):
@@ -248,7 +254,7 @@ else:
                 photo_path = save_image_buffer(fault_img, "fault", new_id)
 
                 dg_combined = f"{dg_make} ({dg_rating})"
-                now_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                now_time = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
 
                 cursor.execute("""
                     INSERT INTO faults (
@@ -391,7 +397,7 @@ else:
                     else:
                         st.error("Docket No দিয়ক!")
 
-            # ৪. Service Engineer স্তৰ (কেৱল দায়িত্ব পোৱা ইঞ্জিনীয়াৰেহে কাম কৰিব পাৰিব)
+            # ৪. Service Engineer স্তৰ
             elif role == "Service Engineer" and t_status == "ASSIGNED_ENG":
                 if t_eng == current_username:
                     st.success("🔧 এই কামটো আপোনাক অৰ্পণ কৰা হৈছে:")
@@ -415,13 +421,13 @@ else:
                     assigned_name = USERS.get(t_eng, {}).get("name", t_eng)
                     st.info(f"🔒 এই কামটো **{assigned_name}**-ক অৰ্পণ কৰা হৈছে।")
 
-            # ৫. Utility Tech Final Verification (কেৱল Fault বনোৱা টেকনিচিয়ানেহে Close কৰিব পাৰিব)
+            # ৫. Utility Tech Final Verification
             elif role == "Utility Technician" and t_status == "PENDING_UT_VERIFY":
                 if t_logged_by == current_username:
                     st.write("🔍 *আপুনি এই টিকটটো খুলিছিল। পৰীক্ষা কৰি সিদ্ধান্ত লওক:*")
                     c1, c2 = st.columns(2)
                     if c1.button("Approve & Close", key=f"ut_app_{t_id}"):
-                        now_close = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        now_close = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
                         cursor.execute("""
                             UPDATE faults SET status = 'CLOSED', closed_at = ?, action_by_selfie = ?, action_by_loc = ? 
                             WHERE id = ?

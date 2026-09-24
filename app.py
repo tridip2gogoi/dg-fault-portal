@@ -137,7 +137,9 @@ def send_telegram_alert(message_text):
 
 # ----------------- USER ACCOUNTS -----------------
 USERS = {
-    "tridip.gogoi": {"password": "Gogoi@6095", "role": "Data Analysis", "name": "Central Supervisor (All JC)", "jc": "All"},
+    # Admin Accounts
+    "admin": {"password": "admin", "role": "Admin", "name": "Super Admin (All JC)", "jc": "All"},
+    "tridip.gogoi": {"password": "Gogoi@6095", "role": "Admin", "name": "Tridip Gogoi (Central Admin)", "jc": "All"},
 
     # ----------------- UTILITY TECHNICIANS (64 USERS MAPPED TO JC) -----------------
     # Shillong JC
@@ -342,6 +344,22 @@ if not st.session_state.logged_in:
             else:
                 st.error("Invalid Username or Password!")
 
+    # ----------------- PUBLIC LIVE TT SUMMARY ON LOGIN PAGE -----------------
+    st.divider()
+    st.subheader("📊 Live DG Fault Tracker & Project Overview (Public View)")
+
+    public_rows = load_all_faults()
+    pub_total = len(public_rows)
+    pub_pending_sm = sum(1 for r in public_rows if r[4] == 'PENDING_SM')
+    pub_in_prog = sum(1 for r in public_rows if r[4] in ['PENDING_DOCKET', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY', 'PENDING_UT_SUP_VERIFY'])
+    pub_closed = sum(1 for r in public_rows if r[4] == 'CLOSED')
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("মুঠ টিকট (Total Tickets)", pub_total)
+    k2.metric("মেনেজাৰ অনুমোদনৰ অপেক্ষাত (Pending SM)", pub_pending_sm)
+    k3.metric("মেৰামতিৰ কাম চলি থকা (Under Rectification)", pub_in_prog)
+    k4.metric("মুঠ বন্ধ হোৱা (Total Closed)", pub_closed)
+
 else:
     current_username = st.session_state.username
     user = st.session_state.user_info
@@ -464,7 +482,7 @@ else:
         st.divider()
 
     # =========================================================================
-    # USER-SPECIFIC LIVE DG FAULT TRACKER & KPI DASHBOARD
+    # USER-SPECIFIC TICKET FILTERING
     # =========================================================================
     all_rows = load_all_faults()
     now_ist_dt = get_ist_now().replace(tzinfo=None)
@@ -490,7 +508,18 @@ else:
 
         is_my_case = False
 
-        if role == "Utility Technician":
+        if role == "Admin":
+            if t_status != "CLOSED":
+                is_my_case = True
+            elif t_closed:
+                try:
+                    c_dt = datetime.strptime(t_closed.split(".")[0], "%Y-%m-%d %H:%M:%S")
+                    if (now_ist_dt - c_dt).days <= retention_limit_days:
+                        is_my_case = True
+                except Exception:
+                    pass
+
+        elif role == "Utility Technician":
             # Own created tickets (Open + Closed within 30 days)
             if t_logged_by == current_username:
                 if t_status != "CLOSED":
@@ -522,7 +551,7 @@ else:
                     except Exception:
                         pass
 
-        elif role in ["Service Manager", "Data Analysis"]:
+        elif role == "Service Manager":
             # Supervised JC (All for Central Supervisor)
             mgr_jc = user.get("jc", "")
             if (mgr_jc == "All") or (t_jc == mgr_jc):
@@ -544,7 +573,9 @@ else:
             trt_str, trt_cat, trt_hours = calculate_trt(t_created, t_closed)
             my_cases.append((r, t_jc, trt_str, trt_cat))
 
-    # --- Live Tracker Metrics for the Logged-in User ---
+    # =========================================================================
+    # ১. USER LIVE TRACKER & SUMMARY
+    # =========================================================================
     st.subheader(f"📊 My Live DG Fault Tracker ({user['name']})")
 
     user_total_count = len(my_cases)
@@ -554,9 +585,48 @@ else:
 
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     kpi1.metric("My Total Active Cases", user_total_count)
-    kpi2.metric("My Pending SM Approval", user_pending_sm_count)
-    kpi3.metric("My In Progress / Rectification", user_in_progress_count)
+    kpi2.metric("Pending SM Approval", user_pending_sm_count)
+    kpi3.metric("Under Rectification", user_in_progress_count)
     kpi4.metric("My Closed (Last 30 Days)", user_closed_count)
+
+    # =========================================================================
+    # ২. JC-WISE BREAKDOWN TABLE (PENDING DOCKET, ASSIGNED ENG, VERIFICATION)
+    # =========================================================================
+    st.write("---")
+    st.markdown("#### 🏢 JC-wise Status & In-Progress Breakdown (Job Centre অনুসৰি হিচাপ)")
+
+    jc_summary_data = []
+    for jc in JC_LIST:
+        jc_tickets = [item for item in my_cases if item[1] == jc]
+        
+        # 1. ডকেট দিয়াৰ অপেক্ষাত থকা (PENDING_DOCKET)
+        p_docket = sum(1 for item in jc_tickets if str(item[0][4]).strip() == 'PENDING_DOCKET')
+        
+        # 2. ইঞ্জিনিয়াৰে কাম চলাই থকা (ASSIGNED_ENG)
+        assigned_eng = sum(1 for item in jc_tickets if str(item[0][4]).strip() == 'ASSIGNED_ENG')
+        
+        # 3. ভেৰিফিকেচনত থকা (PENDING_UT_VERIFY + PENDING_UT_SUP_VERIFY)
+        ut_verify = sum(1 for item in jc_tickets if str(item[0][4]).strip() == 'PENDING_UT_VERIFY')
+        sup_verify = sum(1 for item in jc_tickets if str(item[0][4]).strip() == 'PENDING_UT_SUP_VERIFY')
+        total_verify = ut_verify + sup_verify
+        
+        # Total In Progress
+        total_in_prog = p_docket + assigned_eng + total_verify
+        
+        # Pending SM Approval
+        p_sm = sum(1 for item in jc_tickets if str(item[0][4]).strip() == 'PENDING_SM')
+
+        jc_summary_data.append({
+            "Job Centre (JC)": jc,
+            "Pending SM": p_sm,
+            "Pending Docket (ডকেটৰ অপেক্ষাত)": p_docket,
+            "Assigned Engineer (কাম চলি থকা)": assigned_eng,
+            "Under Verification (ভেৰিফিকেচনত থকা)": f"{total_verify} (UT: {ut_verify} | Sup: {sup_verify})",
+            "Total In Progress (মুঠ কাম চলি থকা)": total_in_prog
+        })
+
+    jc_summary_df = pd.DataFrame(jc_summary_data)
+    st.dataframe(jc_summary_df, use_container_width=True, hide_index=True)
 
     # User-Only TRT Aging Bar
     user_normal_trt = sum(1 for item in my_cases if item[3] == "Normal (< 24h)")
@@ -573,7 +643,7 @@ else:
     st.divider()
 
     # =========================================================================
-    # USER'S TICKETS MASTER TABLE
+    # ৩. USER'S TICKETS MASTER TABLE
     # =========================================================================
     st.markdown("### 📋 My Tickets Master Table")
     st.caption(f"Showing **{len(my_cases)}** actionable tickets assigned to or created by you")
@@ -620,7 +690,7 @@ else:
         st.info("No active tickets found matching your user account.")
 
     # =========================================================================
-    # DETAILED TICKET ACTION CARDS (USER'S CASES ONLY)
+    # ৪. DETAILED TICKET ACTION CARDS (USER'S CASES ONLY)
     # =========================================================================
     st.write("---")
     st.subheader("🔍 Ticket Action & Individual Details")
@@ -689,10 +759,10 @@ else:
                 with c_act2:
                     st.image(t_act_selfie, caption="Action Selfie", width=80)
 
-            # ----------------- SERVICE MANAGER APPROVAL -----------------
-            if role == "Service Manager" and t_status == "PENDING_SM":
+            # ----------------- SERVICE MANAGER / ADMIN APPROVAL -----------------
+            if (role in ["Service Manager", "Admin"]) and t_status == "PENDING_SM":
                 manager_jc = user.get("jc", "")
-                is_authorized = (manager_jc == "All") or (ticket_jc == manager_jc)
+                is_authorized = (role == "Admin") or (manager_jc == "All") or (ticket_jc == manager_jc)
 
                 if is_authorized:
                     st.success(f"✔️ You hold approval authority for **{ticket_jc} JC** | Elapsed TRT: **{trt_str}**")
@@ -723,10 +793,10 @@ else:
                         if u.get("role") == "Service Manager" and u.get("jc") == ticket_jc:
                             assigned_sm_name = u.get("name")
                             break
-                    st.warning(f"🔒 Ticket belongs to **{ticket_jc} JC**. Only **{assigned_sm_name}** or the **Central Supervisor** can approve/reject.")
+                    st.warning(f"🔒 Ticket belongs to **{ticket_jc} JC**. Only **{assigned_sm_name}** or Admin can approve/reject.")
 
-            # ----------------- DOCKET ASSIGNMENT -----------------
-            elif role == "Docket Team" and t_status == "PENDING_DOCKET":
+            # ----------------- DOCKET ASSIGNMENT (DOCKET DESK / ADMIN) -----------------
+            elif (role in ["Docket Team", "Admin"]) and t_status == "PENDING_DOCKET":
                 col_d1, col_d2 = st.columns(2)
                 with col_d1:
                     d_no = st.text_input("Enter Docket No", key=f"doc_in_{t_id}")
@@ -803,10 +873,10 @@ else:
                     creator_name = USERS.get(t_logged_by, {}).get("name", t_logged_by)
                     st.warning(f"🔒 This fault was logged by **{creator_name}**. Only the creator can verify.")
 
-            # ----------------- 6. UT SUPERVISOR FINAL APPROVAL & CLOSURE -----------------
-            elif role == "UT Supervisor" and t_status == "PENDING_UT_SUP_VERIFY":
+            # ----------------- 6. UT SUPERVISOR / ADMIN FINAL APPROVAL & CLOSURE -----------------
+            elif (role in ["UT Supervisor", "Admin"]) and t_status == "PENDING_UT_SUP_VERIFY":
                 sup_jc = user.get("jc", "")
-                is_authorized = (sup_jc == "All") or (ticket_jc == sup_jc)
+                is_authorized = (role == "Admin") or (sup_jc == "All") or (ticket_jc == sup_jc)
 
                 if is_authorized:
                     st.success(f"🛡️ **Final UT Supervisor Approval Authority for {ticket_jc} JC**")
@@ -838,4 +908,4 @@ else:
                         )
                         st.rerun()
                 else:
-                    st.warning(f"🔒 This ticket belongs to **{ticket_jc} JC**. Only **{ticket_jc} UT Supervisor** can grant final closure.")
+                    st.warning(f"🔒 This ticket belongs to **{ticket_jc} JC**. Only **{ticket_jc} UT Supervisor** or Admin can grant final closure.")

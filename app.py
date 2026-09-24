@@ -593,7 +593,7 @@ else:
     # ২. JC-WISE BREAKDOWN TABLE (PENDING DOCKET, ASSIGNED ENG, VERIFICATION)
     # =========================================================================
     st.write("---")
-    st.markdown("#### 🏢 JC-wise Status & In-Progress Breakdown (Job Centre)")
+    st.markdown("#### 🏢 JC-wise Status & In-Progress (Job Centre)")
 
     jc_summary_data = []
     for jc in JC_LIST:

@@ -580,7 +580,7 @@ else:
             filtered_rows.append((r, t_jc, trt_str, trt_cat))
 
     # ----------------- MASTER TICKETS TABLE (ALL TKT EKELOGE) -----------------
-    st.markdown("### 📋 All Tickets Master Table (একেদমে সকলো টিকট একেলগে)")
+    st.markdown("### 📋 All Tickets Master Table")
     st.caption(f"Showing **{len(filtered_rows)}** matching tickets for your access")
 
     if filtered_rows:

@@ -619,10 +619,10 @@ else:
         jc_summary_data.append({
             "Job Centre (JC)": jc,
             "Pending SM": p_sm,
-            "Pending Docket (ডকেটৰ অপেক্ষাত)": p_docket,
-            "Assigned Engineer (কাম চলি থকা)": assigned_eng,
-            "Under Verification (ভেৰিফিকেচনত থকা)": f"{total_verify} (UT: {ut_verify} | Sup: {sup_verify})",
-            "Total In Progress (মুঠ কাম চলি থকা)": total_in_prog
+            "Pending Docket": p_docket,
+            "Assigned Engineer": assigned_eng,
+            "Under Verification": f"{total_verify} (UT: {ut_verify} | Sup: {sup_verify})",
+            "Total In Progress": total_in_prog
         })
 
     jc_summary_df = pd.DataFrame(jc_summary_data)

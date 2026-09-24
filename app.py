@@ -15,7 +15,7 @@ st.set_page_config(page_title="DG Fault Portal", layout="wide")
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# ----------------- GOOGLE SHEETS CONNECTION -----------------
+# ----------------- GOOGLE SHEETS CONNECTION (RELIABLE) -----------------
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
@@ -23,14 +23,14 @@ SCOPES = [
 
 @st.cache_resource
 def get_gspread_client():
-    # GitHub-ত থকা মূল নিৰ্ভুল JSON ফাইলৰ পৰা পোনপটীয়া সংযোগ
     if os.path.exists("service_account.json"):
         credentials = Credentials.from_service_account_file("service_account.json", scopes=SCOPES)
     else:
         creds_dict = dict(st.secrets["gcp_service_account"])
+        if "\\n" in creds_dict.get("private_key", ""):
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
         credentials = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-    client = gspread.authorize(credentials)
-    return client
+    return gspread.authorize(credentials)
 
 def get_worksheet():
     client = get_gspread_client()
@@ -44,57 +44,55 @@ SHEET_HEADERS = [
     "created_at", "closed_at"
 ]
 
-import requests
-
-# ইয়াত পদক্ষেপ ১-ত পোৱা Web app URL টো বহুৱাওক
-SHEET_API_URL = "আপোনাৰ_Web_App_URL_টো_ইয়াত_পেষ্ট_কৰক"
-
 def load_all_faults():
     try:
-        res = requests.get(SHEET_API_URL, timeout=10)
-        records = res.json()
-        rows = []
-        for r in records:
-            rows.append([
-                str(r.get("id", "")),
-                str(r.get("site", "")),
-                str(r.get("dg", "")),
-                str(r.get("desc", "")),
-                str(r.get("status", "")),
-                str(r.get("docket", "")),
-                str(r.get("assigned_eng", "")),
-                str(r.get("logged_by", "")),
-                str(r.get("mobile", "")),
-                str(r.get("logged_by_selfie", "")),
-                str(r.get("logged_by_loc", "")),
-                str(r.get("action_by_selfie", "")),
-                str(r.get("action_by_loc", "")),
-                str(r.get("rectification", "")),
-                str(r.get("fault_photo", "")),
-                str(r.get("rect_photo", "")),
-                str(r.get("created_at", "")),
-                str(r.get("closed_at", ""))
-            ])
-        return rows
-    except Exception:
+        ws = get_worksheet()
+        all_values = ws.get_all_values()
+        if not all_values or len(all_values) <= 1:
+            return []
+        data_rows = []
+        for row in all_values[1:]:
+            padded = row + [""] * (18 - len(row))
+            data_rows.append([str(c) for c in padded[:18]])
+        return data_rows
+    except Exception as e:
+        st.error(f"Google Sheet পঢ়িবলৈ যাওঁতে সমস্যা হৈছে: {e}")
         return []
 
 def add_fault_to_sheet(row_data):
     try:
-        requests.post(SHEET_API_URL, json={"action": "append", "row": row_data}, timeout=10)
-    except Exception:
-        pass
+        ws = get_worksheet()
+        existing = ws.get_all_values()
+        if not existing:
+            ws.append_row(SHEET_HEADERS)
+        ws.append_row(row_data)
+        return True
+    except Exception as e:
+        st.error(f"Google Sheet-ত ডাটা লিখোঁতে বাধা পাইছে: {e}")
+        return False
 
 def update_fault_in_sheet(ticket_id, updates_dict):
     try:
-        requests.post(SHEET_API_URL, json={"action": "update", "id": ticket_id, "updates": updates_dict}, timeout=10)
-    except Exception:
-        pass
-    if row_idx:
-        for col_name, val in updates_dict.items():
-            if col_name in SHEET_HEADERS:
-                col_num = SHEET_HEADERS.index(col_name) + 1
-                ws.update_cell(row_idx, col_num, str(val))
+        ws = get_worksheet()
+        all_vals = ws.get_all_values()
+        if not all_vals:
+            return False
+        headers = all_vals[0]
+        id_idx = headers.index("id") if "id" in headers else 0
+        target_row = None
+        for i, r in enumerate(all_vals[1:], start=2):
+            if len(r) > id_idx and str(r[id_idx]) == str(ticket_id):
+                target_row = i
+                break
+        if target_row:
+            for k, val in updates_dict.items():
+                if k in headers:
+                    col_idx = headers.index(k) + 1
+                    ws.update_cell(target_row, col_idx, str(val))
+            return True
+    except Exception as e:
+        st.error(f"Sheet আপডেট কৰোঁতে এৰৰ আহিছে: {e}")
+        return False
 
 # ----------------- IST & TRT TIME HELPERS -----------------
 def get_ist_now():
@@ -139,65 +137,65 @@ def send_telegram_alert(message_text):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message_text}
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message_text, "parse_mode": "Markdown"}
     try:
         requests.post(url, json=payload, timeout=5)
     except Exception:
         pass
 
-# ----------------- USER ACCOUNTS -----------------
+# ----------------- USER ACCOUNTS WITH MOBILE NUMBERS -----------------
 USERS = {
-    "admin": {"password": "admin", "role": "Service Manager", "name": "Central Supervisor (All JC)", "jc": "All"},
-    "tech1": {"password": "123", "role": "Utility Technician", "name": "Anupam Kumer Shing (Tech)"},
-    "tech2": {"password": "123", "role": "Utility Technician", "name": "Jul Hussain (Tech)"},
-    "tech3": {"password": "123", "role": "Utility Technician", "name": "Shariful Islam (Tech)"},
-    "tech4": {"password": "123", "role": "Utility Technician", "name": "Aminul Islam (Tech)"},
-    "tech5": {"password": "123", "role": "Utility Technician", "name": "Md Rizwan (Tech)"},
-    "tech6": {"password": "123", "role": "Utility Technician", "name": "Amresh Kumar (Tech)"},
-    "tech7": {"password": "123", "role": "Utility Technician", "name": "Hazrat Ali (Tech)"},
-    "tech8": {"password": "123", "role": "Utility Technician", "name": "Avinash Kumar (Tech)"},
-    "tech9": {"password": "123", "role": "Utility Technician", "name": "Anurag Kumar (Tech)"},
-    "tech10": {"password": "123", "role": "Utility Technician", "name": "Md Tazirul Islam (Tech)"},
-    "tech11": {"password": "123", "role": "Utility Technician", "name": "Manseng Marak (Tech)"},
-    "tech12": {"password": "123", "role": "Utility Technician", "name": "Babidul Islam (Tech)"},
-    "tech13": {"password": "123", "role": "Utility Technician", "name": "Brindabon Hajong (Tech)"},
-    "tech14": {"password": "123", "role": "Utility Technician", "name": "Gaganjyoti Das (Tech)"},
-    "tech15": {"password": "123", "role": "Utility Technician", "name": "Golap Rabbani (Tech)"},
-    "tech16": {"password": "123", "role": "Utility Technician", "name": "Hakibul Islam (Tech)"},
-    "tech17": {"password": "123", "role": "Utility Technician", "name": "Sengjal D Sangma (Tech)"},
-    "tech18": {"password": "123", "role": "Utility Technician", "name": "Namsrang R Sangma (Tech)"},
-    "tech19": {"password": "123", "role": "Utility Technician", "name": "Nazrul Ahmed (Tech)"},
-    "tech20": {"password": "123", "role": "Utility Technician", "name": "Ashutosh Kumar (Tech)"},
-    "tech21": {"password": "123", "role": "Utility Technician", "name": "Santosh Kumar Yadav (Tech)"},
-    "tech22": {"password": "123", "role": "Utility Technician", "name": "Sengba G Sangma (Tech)"},
-    "tech23": {"password": "123", "role": "Utility Technician", "name": "Shanjibul Ahmed (Tech)"},
-    "tech24": {"password": "123", "role": "Utility Technician", "name": "Vikash Kumar (Tech)"},
-    "tech25": {"password": "123", "role": "Utility Technician", "name": "Walseng B Marak (Tech)"},
-    "tech26": {"password": "123", "role": "Utility Technician", "name": "Zeaul Hoque (Tech)"},
-    "tech27": {"password": "123", "role": "Utility Technician", "name": "Dharamveer (Tech)"},
-    "manager1": {"password": "2026", "role": "Service Manager", "name": "Ajay Sharma (SM)", "jc": "Shillong"},
-    "manager2": {"password": "2026", "role": "Service Manager", "name": "Rakesh Ahmed (SM)", "jc": "Tura"},
-    "manager3": {"password": "2026", "role": "Service Manager", "name": "Saharul (SM)", "jc": "Jowai"},
-    "docket": {"password": "2027", "role": "Docket Team", "name": "Docket Desk"},
-    "eng1": {"password": "124", "role": "Service Engineer", "name": "Harnual Roshid (Engineer)"},
-    "eng2": {"password": "124", "role": "Service Engineer", "name": "Krishna Kanta Hazarika (Engineer)"},
-    "eng3": {"password": "124", "role": "Service Engineer", "name": "Shaha Alom (Engineer)"},
-    "eng4": {"password": "124", "role": "Service Engineer", "name": "Suman Kumar (Engineer)"},
-    "eng5": {"password": "124", "role": "Service Engineer", "name": "Belikson Momin (Engineer)"},
-    "eng6": {"password": "124", "role": "Service Engineer", "name": "Sengvear Momin (Engineer)"},
-    "eng7": {"password": "124", "role": "Service Engineer", "name": "Ramij Ali (Engineer)"},
-    "eng8": {"password": "124", "role": "Service Engineer", "name": "George Momin (Engineer)"},
-    "eng9": {"password": "124", "role": "Service Engineer", "name": "Mofidul Islam (Engineer)"},
-    "eng10": {"password": "124", "role": "Service Engineer", "name": "Binod Sangma (Engineer)"},
-    "eng11": {"password": "124", "role": "Service Engineer", "name": "Rakibul Islam (Engineer)"},
-    "eng12": {"password": "124", "role": "Service Engineer", "name": "Alexbirth Sangma (Engineer)"},
-    "eng13": {"password": "124", "role": "Service Engineer", "name": "Habizul Rahman (Engineer)"},
-    "eng14": {"password": "124", "role": "Service Engineer", "name": "Stebirth Sangma (Engineer)"},
-    "eng15": {"password": "124", "role": "Service Engineer", "name": "Khairul Islam (Engineer)"}
+    "admin": {"password": "admin", "role": "Service Manager", "name": "Central Supervisor (All JC)", "jc": "All", "phone": "9876543210"},
+    "tech1": {"password": "123", "role": "Utility Technician", "name": "Anupam Kumer Shing (Tech)", "phone": "9864011111"},
+    "tech2": {"password": "123", "role": "Utility Technician", "name": "Jul Hussain (Tech)", "phone": "9864022222"},
+    "tech3": {"password": "123", "role": "Utility Technician", "name": "Shariful Islam (Tech)", "phone": "9864033333"},
+    "tech4": {"password": "123", "role": "Utility Technician", "name": "Aminul Islam (Tech)", "phone": "9864044444"},
+    "tech5": {"password": "123", "role": "Utility Technician", "name": "Md Rizwan (Tech)", "phone": "9864055555"},
+    "tech6": {"password": "123", "role": "Utility Technician", "name": "Amresh Kumar (Tech)", "phone": "9864066666"},
+    "tech7": {"password": "123", "role": "Utility Technician", "name": "Hazrat Ali (Tech)", "phone": "9864077777"},
+    "tech8": {"password": "123", "role": "Utility Technician", "name": "Avinash Kumar (Tech)", "phone": "9864088888"},
+    "tech9": {"password": "123", "role": "Utility Technician", "name": "Anurag Kumar (Tech)", "phone": "9864099999"},
+    "tech10": {"password": "123", "role": "Utility Technician", "name": "Md Tazirul Islam (Tech)", "phone": "9864100000"},
+    "tech11": {"password": "123", "role": "Utility Technician", "name": "Manseng Marak (Tech)", "phone": "9864111111"},
+    "tech12": {"password": "123", "role": "Utility Technician", "name": "Babidul Islam (Tech)", "phone": "9864122222"},
+    "tech13": {"password": "123", "role": "Utility Technician", "name": "Brindabon Hajong (Tech)", "phone": "9864133333"},
+    "tech14": {"password": "123", "role": "Utility Technician", "name": "Gaganjyoti Das (Tech)", "phone": "9864144444"},
+    "tech15": {"password": "123", "role": "Utility Technician", "name": "Golap Rabbani (Tech)", "phone": "9864155555"},
+    "tech16": {"password": "123", "role": "Utility Technician", "name": "Hakibul Islam (Tech)", "phone": "9864166666"},
+    "tech17": {"password": "123", "role": "Utility Technician", "name": "Sengjal D Sangma (Tech)", "phone": "9864177777"},
+    "tech18": {"password": "123", "role": "Utility Technician", "name": "Namsrang R Sangma (Tech)", "phone": "9864188888"},
+    "tech19": {"password": "123", "role": "Utility Technician", "name": "Nazrul Ahmed (Tech)", "phone": "9864199999"},
+    "tech20": {"password": "123", "role": "Utility Technician", "name": "Ashutosh Kumar (Tech)", "phone": "9864200000"},
+    "tech21": {"password": "123", "role": "Utility Technician", "name": "Santosh Kumar Yadav (Tech)", "phone": "9864211111"},
+    "tech22": {"password": "123", "role": "Utility Technician", "name": "Sengba G Sangma (Tech)", "phone": "9864222222"},
+    "tech23": {"password": "123", "role": "Utility Technician", "name": "Shanjibul Ahmed (Tech)", "phone": "9864233333"},
+    "tech24": {"password": "123", "role": "Utility Technician", "name": "Vikash Kumar (Tech)", "phone": "9864244444"},
+    "tech25": {"password": "123", "role": "Utility Technician", "name": "Walseng B Marak (Tech)", "phone": "9864255555"},
+    "tech26": {"password": "123", "role": "Utility Technician", "name": "Zeaul Hoque (Tech)", "phone": "9864266666"},
+    "tech27": {"password": "123", "role": "Utility Technician", "name": "Dharamveer (Tech)", "phone": "9864277777"},
+    "manager1": {"password": "2026", "role": "Service Manager", "name": "Ajay Sharma (SM)", "jc": "Shillong", "phone": "9435011111"},
+    "manager2": {"password": "2026", "role": "Service Manager", "name": "Rakesh Ahmed (SM)", "jc": "Tura", "phone": "9435022222"},
+    "manager3": {"password": "2026", "role": "Service Manager", "name": "Saharul (SM)", "jc": "Jowai", "phone": "9435033333"},
+    "docket": {"password": "2027", "role": "Docket Team", "name": "Docket Desk", "phone": "9435044444"},
+    "eng1": {"password": "124", "role": "Service Engineer", "name": "Harnual Roshid (Engineer)", "phone": "9706011111"},
+    "eng2": {"password": "124", "role": "Service Engineer", "name": "Krishna Kanta Hazarika (Engineer)", "phone": "9706022222"},
+    "eng3": {"password": "124", "role": "Service Engineer", "name": "Shaha Alom (Engineer)", "phone": "9706033333"},
+    "eng4": {"password": "124", "role": "Service Engineer", "name": "Suman Kumar (Engineer)", "phone": "9706044444"},
+    "eng5": {"password": "124", "role": "Service Engineer", "name": "Belikson Momin (Engineer)", "phone": "9706055555"},
+    "eng6": {"password": "124", "role": "Service Engineer", "name": "Sengvear Momin (Engineer)", "phone": "9706066666"},
+    "eng7": {"password": "124", "role": "Service Engineer", "name": "Ramij Ali (Engineer)", "phone": "9706077777"},
+    "eng8": {"password": "124", "role": "Service Engineer", "name": "George Momin (Engineer)", "phone": "9706088888"},
+    "eng9": {"password": "124", "role": "Service Engineer", "name": "Mofidul Islam (Engineer)", "phone": "9706099999"},
+    "eng10": {"password": "124", "role": "Service Engineer", "name": "Binod Sangma (Engineer)", "phone": "9706100000"},
+    "eng11": {"password": "124", "role": "Service Engineer", "name": "Rakibul Islam (Engineer)", "phone": "9706111111"},
+    "eng12": {"password": "124", "role": "Service Engineer", "name": "Alexbirth Sangma (Engineer)", "phone": "9706122222"},
+    "eng13": {"password": "124", "role": "Service Engineer", "name": "Habizul Rahman (Engineer)", "phone": "9706133333"},
+    "eng14": {"password": "124", "role": "Service Engineer", "name": "Stebirth Sangma (Engineer)", "phone": "9706144444"},
+    "eng15": {"password": "124", "role": "Service Engineer", "name": "Khairul Islam (Engineer)", "phone": "9706155555"}
 }
 
-ENGINEERS_LIST = {u: USERS[u]["name"] for u in USERS if USERS[u]["role"] == "Service Engineer"}
-MANAGERS_LIST = {u: USERS[u]["name"] for u in USERS if USERS[u]["role"] == "Service Manager"}
+ENGINEERS_LIST = {u: f"{USERS[u]['name']} (📞 {USERS[u]['phone']})" for u in USERS if USERS[u]["role"] == "Service Engineer"}
+MANAGERS_LIST = {u: f"{USERS[u]['name']} (📞 {USERS[u]['phone']})" for u in USERS if USERS[u]["role"] == "Service Manager"}
 JC_LIST = ["Tura", "Shillong", "Jowai"]
 
 def save_image_buffer(image_buffer, prefix, user_or_ticket):
@@ -306,7 +304,8 @@ else:
     with col_t1:
         st.title("⚡ DG Fault Portal")
         jc_badge = f" | Supervised JC: **{user.get('jc')}**" if user.get('jc') else ""
-        st.caption(f"Logged in: **{user['name']}** ({current_username}) | Role: **{role}**{jc_badge}")
+        mob_badge = f" | 📱 **{user.get('phone', '')}**"
+        st.caption(f"Logged in: **{user['name']}** ({current_username}){mob_badge} | Role: **{role}**{jc_badge}")
         if user_loc:
             st.markdown(f"[📍 View Login Location on Google Maps]({user_loc})")
     with col_t2:
@@ -326,6 +325,7 @@ else:
     # 1. Utility Technician Form
     if role == "Utility Technician":
         st.subheader("Log New Fault Request")
+        default_user_phone = user.get("phone", "")
         with st.form("new_fault_form"):
             c_site, c_jc = st.columns([2, 1])
             with c_site:
@@ -335,7 +335,7 @@ else:
             
             c_mob, c_dg1, c_dg2 = st.columns([1.5, 1, 1])
             with c_mob:
-                contact_mobile = st.text_input("Contact Mobile Number (10 digits)", max_chars=10, help="Enter active 10-digit mobile number")
+                contact_mobile = st.text_input("Contact Mobile Number (10 digits)", value=default_user_phone, max_chars=10, help="Enter active 10-digit mobile number")
             with c_dg1:
                 dg_make = st.selectbox("DG Make", ["Kirloskar", "Mahindra", "Eicher"])
             with c_dg2:
@@ -389,27 +389,27 @@ else:
                         current_username, clean_mobile, user_selfie, user_loc, 
                         '', '', '', photo_paths, '', now_time, ''
                     ]
-                    add_fault_to_sheet(row_payload)
+                    success = add_fault_to_sheet(row_payload)
 
-                    photo_count = len(fault_imgs) if fault_imgs else 0
-                    tg_msg = (
-                        f"🚨 *New DG Fault Logged!*\n\n"
-                        f"📌 *Ticket ID:* `{new_id}`\n"
-                        f"🏢 *Site ID:* {site}\n"
-                        f"📍 *JC:* {selected_jc}\n"
-                        f"🏭 *DG:* {dg_make} ({dg_rating})\n"
-                        f"📱 *Contact No:* `{clean_mobile}`\n"
-                        f"📞 *Online Support:* {support_final_name}\n"
-                        f"💡 *Support Guidance:* {online_sup_remarks if online_sup_remarks else 'N/A'}\n"
-                        f"📝 *Fault Remarks:* {desc}\n"
-                        f"📷 *Photos Uploaded:* {photo_count}\n"
-                        f"👤 *Logged by:* {user['name']}\n"
-                        f"🕒 *Date & Time (IST):* {format_dt(now_time)}"
-                    )
-                    send_telegram_alert(tg_msg)
-
-                    st.success(f"Fault ticket {new_id} saved to Google Sheets! Telegram notification sent.")
-                    st.rerun()
+                    if success:
+                        photo_count = len(fault_imgs) if fault_imgs else 0
+                        tg_msg = (
+                            f"🚨 *New DG Fault Logged!*\n\n"
+                            f"📌 *Ticket ID:* `{new_id}`\n"
+                            f"🏢 *Site ID:* {site}\n"
+                            f"📍 *JC:* {selected_jc}\n"
+                            f"🏭 *DG:* {dg_make} ({dg_rating})\n"
+                            f"📱 *Contact No:* [{clean_mobile}](tel:{clean_mobile})\n"
+                            f"📞 *Online Support:* {support_final_name}\n"
+                            f"💡 *Support Guidance:* {online_sup_remarks if online_sup_remarks else 'N/A'}\n"
+                            f"📝 *Fault Remarks:* {desc}\n"
+                            f"📷 *Photos Uploaded:* {photo_count}\n"
+                            f"👤 *Logged by:* {user['name']} (📞 {clean_mobile})\n"
+                            f"🕒 *Date & Time (IST):* {format_dt(now_time)}"
+                        )
+                        send_telegram_alert(tg_msg)
+                        st.success(f"Fault ticket {new_id} saved to Google Sheets! Telegram notification sent.")
+                        st.rerun()
 
         st.divider()
 
@@ -589,8 +589,8 @@ else:
             c_info1, c_info2 = st.columns([3, 1])
             with c_info1:
                 creator_name = USERS.get(t_logged_by, {}).get('name', t_logged_by)
-                mob_display = f" | 📱 Contact: **{t_mobile}**" if t_mobile else ""
-                st.caption(f"Logged by: **{creator_name}** ({t_logged_by}){mob_display} | JC: **{ticket_jc}**")
+                mob_link = f" | 📱 [**Call {t_mobile}**](tel:{t_mobile})" if t_mobile else ""
+                st.markdown(f"Logged by: **{creator_name}** ({t_logged_by}){mob_link} | JC: **{ticket_jc}**")
                 if t_l_loc:
                     st.markdown(f"📍 [View Creator GPS Location]({t_l_loc})")
             with c_info2:
@@ -600,8 +600,11 @@ else:
             display_images_gallery(t_fphoto, "Fault Photos")
 
             if t_docket:
-                eng_display = USERS.get(t_eng, {}).get("name", t_eng)
-                st.info(f"Docket No: **{t_docket}** | Assigned Engineer: **{eng_display}**")
+                eng_info = USERS.get(t_eng, {})
+                eng_name = eng_info.get("name", t_eng)
+                eng_phone = eng_info.get("phone", "")
+                phone_html = f" | 📱 [**Call {eng_phone}**](tel:{eng_phone})" if eng_phone else ""
+                st.markdown(f"Docket No: **{t_docket}** | Assigned Engineer: **{eng_name}**{phone_html}")
 
             if t_rect:
                 st.warning(f"Rectification Notes: {t_rect}")

@@ -399,7 +399,7 @@ else:
                 site = st.text_input("Site ID (e.g. GUW-10)")
             with c_jc:
                 jc_index = JC_LIST.index(user_assigned_jc) if user_assigned_jc in JC_LIST else 0
-                selected_jc = st.selectbox("Job Centre (JC)", JC_LIST, index=jc_index, disabled=True)
+                selected_jc = st.selectbox("JIO Centre (JC)", JC_LIST, index=jc_index, disabled=True)
             
             c_mob, c_dg1, c_dg2 = st.columns([1.5, 1, 1])
             with c_mob:
@@ -499,7 +499,7 @@ else:
         t_created = str(r[16]).strip()
         t_closed = str(r[17]).strip()
 
-        # Job Centre (JC) Identification
+        # JIO Centre (JC) Identification
         t_jc = "Unknown"
         for jc_opt in JC_LIST:
             if f"[{jc_opt}]" in t_site:
@@ -593,7 +593,7 @@ else:
     # ২. JC-WISE BREAKDOWN TABLE (PENDING DOCKET, ASSIGNED ENG, VERIFICATION)
     # =========================================================================
     st.write("---")
-    st.markdown("#### 🏢 JC-wise Status & In-Progress (Job Centre)")
+    st.markdown("#### 🏢 JC-wise Status & In-Progress (JIO Centre)")
 
     jc_summary_data = []
     for jc in JC_LIST:
@@ -617,7 +617,7 @@ else:
         p_sm = sum(1 for item in jc_tickets if str(item[0][4]).strip() == 'PENDING_SM')
 
         jc_summary_data.append({
-            "Job Centre (JC)": jc,
+            "JIO Centre (JC)": jc,
             "Pending SM": p_sm,
             "Pending Docket": p_docket,
             "Assigned Engineer": assigned_eng,

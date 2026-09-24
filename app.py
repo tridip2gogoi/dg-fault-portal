@@ -490,7 +490,7 @@ else:
         sm_filter_list = ["All Managers", "Central Supervisor (All JC)", "Ajay Sharma (SM - Shillong)", "Rakesh Ahmed (SM - Tura)", "Saharul (SM - Jowai)"]
         sm_filter = st.selectbox("👤 Filter by Responsible SM:", sm_filter_list)
 
-    # ----------------- 30 DAYS RETENTION & USER-SPECIFIC TICKET FILTER -----------------
+    # ----------------- 30 DAYS RETENTION & ROLE-BASED TICKET FILTER -----------------
     now_ist_dt = get_ist_now().replace(tzinfo=None)
     retention_limit_days = 30
 
@@ -499,50 +499,62 @@ else:
         t_id = r[0]
         t_site = r[1]
         t_status = r[4]
+        t_docket = r[5]
         t_eng = r[6]
         t_logged_by = r[7]
         t_created = r[16]
         t_closed = r[17]
 
-        # 1. Closed ticket 30 days retention logic
-        if t_status == "CLOSED" and t_closed:
+        # ১. ৩০ দিন পাৰ হৈ যোৱা CLOSED টিকট পৰ্টেলৰ পৰা সম্পূৰ্ণ বাদ পৰিব:
+        if t_status == "CLOSED":
+            if not t_closed:
+                continue
             try:
                 clean_closed = str(t_closed).split(".")[0]
                 closed_dt = datetime.strptime(clean_closed, "%Y-%m-%d %H:%M:%S")
                 days_since_closed = (now_ist_dt - closed_dt).days
                 if days_since_closed > retention_limit_days:
-                    continue
+                    continue  # ৩০ দিন পাৰ হ'লে কোনেও নেদেখিব
             except Exception:
-                pass
+                continue
 
-        # 2. Identify Job Centre
+        # ২. Job Centre (JC) নিৰ্ধাৰণ:
         t_jc = "Unknown"
         for jc_opt in JC_LIST:
             if f"[{jc_opt}]" in t_site:
                 t_jc = jc_opt
                 break
 
-        # 3. User-Specific Access Control (Login-ৰ পিছত কেৱল নিজৰ অপেন টিকট ফিল্টাৰ)
+        # ৩. ভূমিকা অনুসৰি প্ৰৱেশাধিকাৰ (Role-based Access Filtering):
         user_match = False
         if role == "Utility Technician":
-            user_match = (t_logged_by == current_username) and (t_status != "CLOSED")
+            # টেকনিচিয়ানে কেৱল তেওঁ নিজে সৃষ্টি কৰা টিকট দেখিব (Open + 30 দিনৰ ভিতৰৰ Closed)
+            user_match = (t_logged_by == current_username)
+
         elif role == "Service Engineer":
-            user_match = (t_eng == current_username) and (t_status != "CLOSED")
+            # ইঞ্জিনিয়াৰে কেৱল তেওঁলৈ আৱন্টন হোৱা টিকট দেখিব (Open + 30 দিনৰ ভিতৰৰ Closed)
+            user_match = (t_eng == current_username)
+
         elif role == "UT Supervisor":
+            # UT Supervisor-এ নিজৰ JC-ৰ টিকট দেখিব (Open + 30 দিনৰ ভিতৰৰ Closed)
             sup_jc = user.get("jc", "")
-            user_match = ((sup_jc == "All") or (t_jc == sup_jc)) and (t_status != "CLOSED")
+            user_match = (sup_jc == "All") or (t_jc == sup_jc)
+
         elif role == "Service Manager":
+            # Service Manager-এ নিজৰ JC-ৰ টিকট দেখিব (Admin হ'লে সকলো JC)
             mgr_jc = user.get("jc", "")
             user_match = (mgr_jc == "All") or (t_jc == mgr_jc)
+
         elif role == "Docket Team":
-            user_match = (t_status in ["PENDING_DOCKET", "ASSIGNED_ENG"])
+            # Docket Deske ডকেট দিবলগীয়া আৰু সক্ৰিয় ডকেট টিকট দেখিব
+            user_match = (t_status in ["PENDING_DOCKET", "ASSIGNED_ENG", "PENDING_UT_VERIFY", "PENDING_UT_SUP_VERIFY"])
         else:
             user_match = True
 
         if not user_match:
             continue
 
-        # 4. Standard UI filters (TRT, JC, SM dropdown)
+        # ৪. UI ড্ৰপডাউন ফিল্টাৰ (TRT, JC, SM):
         trt_str, trt_cat, trt_hours = calculate_trt(t_created, t_closed)
 
         trt_match = True

@@ -355,10 +355,10 @@ if not st.session_state.logged_in:
     pub_closed = sum(1 for r in public_rows if r[4] == 'CLOSED')
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("মুঠ টিকট (Total Tickets)", pub_total)
-    k2.metric("মেনেজাৰ অনুমোদনৰ অপেক্ষাত (Pending SM)", pub_pending_sm)
-    k3.metric("মেৰামতিৰ কাম চলি থকা (Under Rectification)", pub_in_prog)
-    k4.metric("মুঠ বন্ধ হোৱা (Total Closed)", pub_closed)
+    k1.metric("(Total Tickets)", pub_total)
+    k2.metric("(Pending SM)", pub_pending_sm)
+    k3.metric("(Under Rectification)", pub_in_prog)
+    k4.metric("(Total Closed)", pub_closed)
 
 else:
     current_username = st.session_state.username
@@ -463,17 +463,17 @@ else:
                         photo_count = len(fault_imgs) if fault_imgs else 0
                         tg_msg = (
                             f"🚨 *New DG Fault Logged!*\n\n"
-                            f"📌 *Ticket ID:* `{new_id}`\n"
-                            f"🏢 *Site ID:* {site}\n"
-                            f"📍 *JC:* {selected_jc}\n"
-                            f"🏭 *DG:* {dg_make} ({dg_rating})\n"
-                            f"📱 *Contact No:* [{clean_mobile}](tel:{clean_mobile})\n"
+                            f" *Ticket ID:* `{new_id}`\n"
+                            f" *Site ID:* {site}\n"
+                            f" *JC:* {selected_jc}\n"
+                            f" *DG:* {dg_make} ({dg_rating})\n"
+                            f" *Contact No:* [{clean_mobile}](tel:{clean_mobile})\n"
                             f"📞 *Online Support:* {support_final_name}\n"
-                            f"💡 *Support Guidance:* {online_sup_remarks if online_sup_remarks else 'N/A'}\n"
-                            f"📝 *Fault Remarks:* {desc}\n"
-                            f"📷 *Photos Uploaded:* {photo_count}\n"
-                            f"👤 *Logged by:* {user['name']} (📞 {clean_mobile})\n"
-                            f"🕒 *Date & Time (IST):* {format_dt(now_time)}"
+                            f" *Support Guidance:* {online_sup_remarks if online_sup_remarks else 'N/A'}\n"
+                            f" *Fault Remarks:* {desc}\n"
+                            f" *Photos Uploaded:* {photo_count}\n"
+                            f" *Logged by:* {user['name']} (📞 {clean_mobile})\n"
+                            f" *Date & Time (IST):* {format_dt(now_time)}"
                         )
                         send_telegram_alert(tg_msg)
                         st.success(f"Fault ticket {new_id} saved to database! Telegram notification sent.")
@@ -599,13 +599,13 @@ else:
     for jc in JC_LIST:
         jc_tickets = [item for item in my_cases if item[1] == jc]
         
-        # 1. ডকেট দিয়াৰ অপেক্ষাত থকা (PENDING_DOCKET)
+        # 1. PENDING_DOCKET
         p_docket = sum(1 for item in jc_tickets if str(item[0][4]).strip() == 'PENDING_DOCKET')
         
-        # 2. ইঞ্জিনিয়াৰে কাম চলাই থকা (ASSIGNED_ENG)
+        # 2. ASSIGNED_ENG
         assigned_eng = sum(1 for item in jc_tickets if str(item[0][4]).strip() == 'ASSIGNED_ENG')
         
-        # 3. ভেৰিফিকেচনত থকা (PENDING_UT_VERIFY + PENDING_UT_SUP_VERIFY)
+        # 3. PENDING_UT_VERIFY + PENDING_UT_SUP_VERIFY
         ut_verify = sum(1 for item in jc_tickets if str(item[0][4]).strip() == 'PENDING_UT_VERIFY')
         sup_verify = sum(1 for item in jc_tickets if str(item[0][4]).strip() == 'PENDING_UT_SUP_VERIFY')
         total_verify = ut_verify + sup_verify
@@ -891,10 +891,10 @@ else:
                         })
                         send_telegram_alert(
                             f"🎉 *Ticket CLOSED (Final Approval by UT Supervisor)*\n\n"
-                            f"📌 *Ticket ID:* `{t_id}`\n"
-                            f"📍 *JC:* {ticket_jc}\n"
-                            f"⏱️ *Total Resolution TRT:* {trt_str}\n"
-                            f"👤 *Final Closed by UT Sup:* {user['name']}\n"
+                            f" *Ticket ID:* `{t_id}`\n"
+                            f" *JC:* {ticket_jc}\n"
+                            f" *Total Resolution TRT:* {trt_str}\n"
+                            f" *Final Closed by UT Sup:* {user['name']}\n"
                             f"🕒 *Closed At:* {format_dt(now_close)}"
                         )
                         st.rerun()

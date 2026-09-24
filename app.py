@@ -137,66 +137,114 @@ def send_telegram_alert(message_text):
 
 # ----------------- USER ACCOUNTS -----------------
 USERS = {
-    "admin": {"password": "admin", "role": "Service Manager", "name": "Central Supervisor (All JC)", "jc": "All", "phone": "9876543210"},
-    # Utility Technicians
-    "tech1": {"password": "123", "role": "Utility Technician", "name": "Anupam Kumer Shing (Tech)", "phone": "9864011111"},
-    "tech2": {"password": "123", "role": "Utility Technician", "name": "Jul Hussain (Tech)", "phone": "9864022222"},
-    "tech3": {"password": "123", "role": "Utility Technician", "name": "Shariful Islam (Tech)", "phone": "9864033333"},
-    "tech4": {"password": "123", "role": "Utility Technician", "name": "Aminul Islam (Tech)", "phone": "9864044444"},
-    "tech5": {"password": "123", "role": "Utility Technician", "name": "Md Rizwan (Tech)", "phone": "9864055555"},
-    "tech6": {"password": "123", "role": "Utility Technician", "name": "Amresh Kumar (Tech)", "phone": "9864066666"},
-    "tech7": {"password": "123", "role": "Utility Technician", "name": "Hazrat Ali (Tech)", "phone": "9864077777"},
-    "tech8": {"password": "123", "role": "Utility Technician", "name": "Avinash Kumar (Tech)", "phone": "9864088888"},
-    "tech9": {"password": "123", "role": "Utility Technician", "name": "Anurag Kumar (Tech)", "phone": "9864099999"},
-    "tech10": {"password": "123", "role": "Utility Technician", "name": "Md Tazirul Islam (Tech)", "phone": "9864100000"},
-    "tech11": {"password": "123", "role": "Utility Technician", "name": "Manseng Marak (Tech)", "phone": "9864111111"},
-    "tech12": {"password": "123", "role": "Utility Technician", "name": "Babidul Islam (Tech)", "phone": "9864122222"},
-    "tech13": {"password": "123", "role": "Utility Technician", "name": "Brindabon Hajong (Tech)", "phone": "9864133333"},
-    "tech14": {"password": "123", "role": "Utility Technician", "name": "Gaganjyoti Das (Tech)", "phone": "9864144444"},
-    "tech15": {"password": "123", "role": "Utility Technician", "name": "Golap Rabbani (Tech)", "phone": "9864155555"},
-    "tech16": {"password": "123", "role": "Utility Technician", "name": "Hakibul Islam (Tech)", "phone": "9864166666"},
-    "tech17": {"password": "123", "role": "Utility Technician", "name": "Sengjal D Sangma (Tech)", "phone": "9864177777"},
-    "tech18": {"password": "123", "role": "Utility Technician", "name": "Namsrang R Sangma (Tech)", "phone": "9864188888"},
-    "tech19": {"password": "123", "role": "Utility Technician", "name": "Nazrul Ahmed (Tech)", "phone": "9864199999"},
-    "tech20": {"password": "123", "role": "Utility Technician", "name": "Ashutosh Kumar (Tech)", "phone": "9864200000"},
-    "tech21": {"password": "123", "role": "Utility Technician", "name": "Santosh Kumar Yadav (Tech)", "phone": "9864211111"},
-    "tech22": {"password": "123", "role": "Utility Technician", "name": "Sengba G Sangma (Tech)", "phone": "9864222222"},
-    "tech23": {"password": "123", "role": "Utility Technician", "name": "Shanjibul Ahmed (Tech)", "phone": "9864233333"},
-    "tech24": {"password": "123", "role": "Utility Technician", "name": "Vikash Kumar (Tech)", "phone": "9864244444"},
-    "tech25": {"password": "123", "role": "Utility Technician", "name": "Walseng B Marak (Tech)", "phone": "9864255555"},
-    "tech26": {"password": "123", "role": "Utility Technician", "name": "Zeaul Hoque (Tech)", "phone": "9864266666"},
-    "tech27": {"password": "123", "role": "Utility Technician", "name": "Dharamveer (Tech)", "phone": "9864277777"},
+    # Data Analysis & Central Supervisor
+    "tridip.gogoi": {"password": "Gogoi@6095", "role": "Data Analysis", "name": "Central Supervisor (All JC)", "jc": "All"},
+
+    # ----------------- UTILITY TECHNICIANS (64 USERS MAPPED TO JC) -----------------
+    # Shillong JC
+    "tech1": {"password": "123", "role": "Utility Technician", "name": "Ebestar Khongsit (Tech)", "jc": "Shillong"},
+    "tech2": {"password": "123", "role": "Utility Technician", "name": "Augustar Buddon (Tech)", "jc": "Shillong"},
+    "tech3": {"password": "123", "role": "Utility Technician", "name": "BANKITKUPAR RANI (Tech)", "jc": "Shillong"},
+    "tech4": {"password": "123", "role": "Utility Technician", "name": "JITENDRA RAM (Tech)", "jc": "Shillong"},
+    "tech5": {"password": "123", "role": "Utility Technician", "name": "Mahesh Barman (Tech)", "jc": "Shillong"},
+    "tech6": {"password": "123", "role": "Utility Technician", "name": "ANDLEBERT SHANGPLIANG (Tech)", "jc": "Shillong"},
+    "tech7": {"password": "123", "role": "Utility Technician", "name": "Tyngshainlong kharjana (Tech)", "jc": "Shillong"},
+    "tech8": {"password": "123", "role": "Utility Technician", "name": "Bankynsia Mukhim (Tech)", "jc": "Shillong"},
+    "tech9": {"password": "123", "role": "Utility Technician", "name": "BANTEILANG LYNGDOH (Tech)", "jc": "Shillong"},
+    "tech10": {"password": "123", "role": "Utility Technician", "name": "WILLGEORGE SHIJI MARNGAR (Tech)", "jc": "Shillong"},
+    "tech11": {"password": "123", "role": "Utility Technician", "name": "Dapkupar Marngar (Tech)", "jc": "Shillong"},
+    "tech12": {"password": "123", "role": "Utility Technician", "name": "DONLAD DORPHANG (Tech)", "jc": "Shillong"},
+    "tech13": {"password": "123", "role": "Utility Technician", "name": "HABANJOP WANKHAR (Tech)", "jc": "Shillong"},
+    "tech14": {"password": "123", "role": "Utility Technician", "name": "JELIUS L MARSHILONG (Tech)", "jc": "Shillong"},
+    "tech15": {"password": "123", "role": "Utility Technician", "name": "KRISEN NONGSPUNG (Tech)", "jc": "Shillong"},
+    "tech16": {"password": "123", "role": "Utility Technician", "name": "JIAD ALI (Tech)", "jc": "Shillong"},
+    "tech17": {"password": "123", "role": "Utility Technician", "name": "Kharawbor Sylliong (Tech)", "jc": "Shillong"},
+    "tech18": {"password": "123", "role": "Utility Technician", "name": "TAUFIKAR RAHMAN (Tech)", "jc": "Shillong"},
+    "tech19": {"password": "123", "role": "Utility Technician", "name": "KITBOKLANG DORPHANG (Tech)", "jc": "Shillong"},
+    "tech20": {"password": "123", "role": "Utility Technician", "name": "LAINEH JUNOM LAKHIT (Tech)", "jc": "Shillong"},
+    "tech21": {"password": "123", "role": "Utility Technician", "name": "LOTSTARJUNE NONGSIEJ (Tech)", "jc": "Shillong"},
+    "tech22": {"password": "123", "role": "Utility Technician", "name": "Mathaius Iawrod (Tech)", "jc": "Shillong"},
+    "tech23": {"password": "123", "role": "Utility Technician", "name": "MELVIN PYNGROPE (Tech)", "jc": "Shillong"},
+    "tech24": {"password": "123", "role": "Utility Technician", "name": "PYNSHAI MASHARING (Tech)", "jc": "Shillong"},
+    "tech25": {"password": "123", "role": "Utility Technician", "name": "TEIBORLIN THYRNIANG (Tech)", "jc": "Shillong"},
+    "tech26": {"password": "123", "role": "Utility Technician", "name": "SARANGA PANI SAIKIA (Tech)", "jc": "Shillong"},
+    "tech27": {"password": "123", "role": "Utility Technician", "name": "UTPAL GOHAIN (Tech)", "jc": "Shillong"},
+    "tech28": {"password": "123", "role": "Utility Technician", "name": "Wahidur Rahman (Tech)", "jc": "Shillong"},
+
+    # Jowai JC
+    "tech29": {"password": "123", "role": "Utility Technician", "name": "RICHARD SUMER (Tech)", "jc": "Jowai"},
+    "tech30": {"password": "123", "role": "Utility Technician", "name": "ORLANDO SANGMA (Tech)", "jc": "Jowai"},
+    "tech31": {"password": "123", "role": "Utility Technician", "name": "SHANDIP SYLLIANG (Tech)", "jc": "Jowai"},
+    "tech32": {"password": "123", "role": "Utility Technician", "name": "SHOHIDUL ISLAM (Tech)", "jc": "Jowai"},
+    "tech33": {"password": "123", "role": "Utility Technician", "name": "Chibor Muksor (Tech)", "jc": "Jowai"},
+    "tech34": {"password": "123", "role": "Utility Technician", "name": "Karmilus Bamon (Tech)", "jc": "Jowai"},
+    "tech35": {"password": "123", "role": "Utility Technician", "name": "Ansar Ahmed Barbhuiya (Tech)", "jc": "Jowai"},
+    "tech36": {"password": "123", "role": "Utility Technician", "name": "Bob Taney (Tech)", "jc": "Jowai"},
+    "tech37": {"password": "123", "role": "Utility Technician", "name": "MOUCHAM ALI AHMED (Tech)", "jc": "Jowai"},
+    "tech38": {"password": "123", "role": "Utility Technician", "name": "WAIDUL HAQUE MAJUMDER (Tech)", "jc": "Jowai"},
+
+    # Tura JC
+    "tech39": {"password": "123", "role": "Utility Technician", "name": "Anupam Kumer shing (Tech)", "jc": "Tura"},
+    "tech40": {"password": "123", "role": "Utility Technician", "name": "Jul Hussain (Tech)", "jc": "Tura"},
+    "tech41": {"password": "123", "role": "Utility Technician", "name": "SHARIFUL ISLAM (Tech)", "jc": "Tura"},
+    "tech42": {"password": "123", "role": "Utility Technician", "name": "AMINUL ISLAM (Tech)", "jc": "Tura"},
+    "tech43": {"password": "123", "role": "Utility Technician", "name": "Md Rizwan (Tech)", "jc": "Tura"},
+    "tech44": {"password": "123", "role": "Utility Technician", "name": "AMRESH KUMAR (Tech)", "jc": "Tura"},
+    "tech45": {"password": "123", "role": "Utility Technician", "name": "Hazrat Ali (Tech)", "jc": "Tura"},
+    "tech46": {"password": "123", "role": "Utility Technician", "name": "Avinash Kumar (Tech)", "jc": "Tura"},
+    "tech47": {"password": "123", "role": "Utility Technician", "name": "ANURAG KUMAR (Tech)", "jc": "Tura"},
+    "tech48": {"password": "123", "role": "Utility Technician", "name": "Md Tazirul Islam (Tech)", "jc": "Tura"},
+    "tech49": {"password": "123", "role": "Utility Technician", "name": "Manseng Marak (Tech)", "jc": "Tura"},
+    "tech50": {"password": "123", "role": "Utility Technician", "name": "Babidul Islam (Tech)", "jc": "Tura"},
+    "tech51": {"password": "123", "role": "Utility Technician", "name": "BRINDABON HAJONG (Tech)", "jc": "Tura"},
+    "tech52": {"password": "123", "role": "Utility Technician", "name": "GAGANJYOTI DAS (Tech)", "jc": "Tura"},
+    "tech53": {"password": "123", "role": "Utility Technician", "name": "Golap Rabbani (Tech)", "jc": "Tura"},
+    "tech54": {"password": "123", "role": "Utility Technician", "name": "HAKIBUL ISLAM (Tech)", "jc": "Tura"},
+    "tech55": {"password": "123", "role": "Utility Technician", "name": "Sengjal D Sangma (Tech)", "jc": "Tura"},
+    "tech56": {"password": "123", "role": "Utility Technician", "name": "NAMSRANG R SANGMA (Tech)", "jc": "Tura"},
+    "tech57": {"password": "123", "role": "Utility Technician", "name": "NAZRUL AHMED (Tech)", "jc": "Tura"},
+    "tech58": {"password": "123", "role": "Utility Technician", "name": "Ashutosh kumar (Tech)", "jc": "Tura"},
+    "tech59": {"password": "123", "role": "Utility Technician", "name": "Santosh Kumar Yadav (Tech)", "jc": "Tura"},
+    "tech60": {"password": "123", "role": "Utility Technician", "name": "SENGBA G SANGMA (Tech)", "jc": "Tura"},
+    "tech61": {"password": "123", "role": "Utility Technician", "name": "Shanjibul Ahmed (Tech)", "jc": "Tura"},
+    "tech62": {"password": "123", "role": "Utility Technician", "name": "VIKASH KUMAR (Tech)", "jc": "Tura"},
+    "tech63": {"password": "123", "role": "Utility Technician", "name": "Walseng B Marak (Tech)", "jc": "Tura"},
+    "tech64": {"password": "123", "role": "Utility Technician", "name": "Zeaul Hoque (Tech)", "jc": "Tura"},
+
     # UT Supervisors
-    "utsup1": {"password": "2026", "role": "UT Supervisor", "name": "Wellbertstar Jaba (UT Sup)", "jc": "Shillong", "phone": "9864000001"},
-    "utsup2": {"password": "2026", "role": "UT Supervisor", "name": "Binay Ray (UT Sup)", "jc": "Jowai", "phone": "9864000002"},
-    "utsup3": {"password": "2026", "role": "UT Supervisor", "name": "Maynal Haque (UT Sup)", "jc": "Tura", "phone": "9864000003"},
-    "utsup4": {"password": "2026", "role": "UT Supervisor", "name": "Mojib Kumar Saikia (UT Sup)", "jc": "Tura", "phone": "9864000004"},
+    "utsup1": {"password": "2026", "role": "UT Supervisor", "name": "Wellbertstar Jaba (UT Sup)", "jc": "Shillong"},
+    "utsup2": {"password": "2026", "role": "UT Supervisor", "name": "Binay Ray (UT Sup)", "jc": "Jowai"},
+    "utsup3": {"password": "2026", "role": "UT Supervisor", "name": "Maynal Haque (UT Sup)", "jc": "Tura"},
+    "utsup4": {"password": "2026", "role": "UT Supervisor", "name": "Mojib Kumar Saikia (UT Sup)", "jc": "Tura"},
+
     # Service Managers
-    "manager1": {"password": "2026", "role": "Service Manager", "name": "Ajay Sharma (SM)", "jc": "Shillong", "phone": "9435011111"},
-    "manager2": {"password": "2026", "role": "Service Manager", "name": "Rakesh Ahmed (SM)", "jc": "Tura", "phone": "9435022222"},
-    "manager3": {"password": "2026", "role": "Service Manager", "name": "Saharul (SM)", "jc": "Jowai", "phone": "9435033333"},
+    "manager1": {"password": "2026", "role": "Service Manager", "name": "Ajay Sharma (SM)", "jc": "Shillong"},
+    "manager2": {"password": "2026", "role": "Service Manager", "name": "Rakesh Ahmed (SM)", "jc": "Tura"},
+    "manager3": {"password": "2026", "role": "Service Manager", "name": "Saharul (SM)", "jc": "Jowai"},
+
     # Docket Desk
-    "docket": {"password": "2027", "role": "Docket Team", "name": "Docket Desk", "phone": "9435044444"},
+    "docket": {"password": "2027", "role": "Docket Team", "name": "Docket Desk"},
+
     # Service Engineers
-    "eng1": {"password": "124", "role": "Service Engineer", "name": "Harnual Roshid (Engineer)", "phone": "9706011111"},
-    "eng2": {"password": "124", "role": "Service Engineer", "name": "Krishna Kanta Hazarika (Engineer)", "phone": "9706022222"},
-    "eng3": {"password": "124", "role": "Service Engineer", "name": "Shaha Alom (Engineer)", "phone": "9706033333"},
-    "eng4": {"password": "124", "role": "Service Engineer", "name": "Suman Kumar (Engineer)", "phone": "9706044444"},
-    "eng5": {"password": "124", "role": "Service Engineer", "name": "Belikson Momin (Engineer)", "phone": "9706055555"},
-    "eng6": {"password": "124", "role": "Service Engineer", "name": "Sengvear Momin (Engineer)", "phone": "9706066666"},
-    "eng7": {"password": "124", "role": "Service Engineer", "name": "Ramij Ali (Engineer)", "phone": "9706077777"},
-    "eng8": {"password": "124", "role": "Service Engineer", "name": "George Momin (Engineer)", "phone": "9706088888"},
-    "eng9": {"password": "124", "role": "Service Engineer", "name": "Mofidul Islam (Engineer)", "phone": "9706099999"},
-    "eng10": {"password": "124", "role": "Service Engineer", "name": "Binod Sangma (Engineer)", "phone": "9706100000"},
-    "eng11": {"password": "124", "role": "Service Engineer", "name": "Rakibul Islam (Engineer)", "phone": "9706111111"},
-    "eng12": {"password": "124", "role": "Service Engineer", "name": "Alexbirth Sangma (Engineer)", "phone": "9706122222"},
-    "eng13": {"password": "124", "role": "Service Engineer", "name": "Habizul Rahman (Engineer)", "phone": "9706133333"},
-    "eng14": {"password": "124", "role": "Service Engineer", "name": "Stebirth Sangma (Engineer)", "phone": "9706144444"},
-    "eng15": {"password": "124", "role": "Service Engineer", "name": "Khairul Islam (Engineer)", "phone": "9706155555"}
+    "eng1": {"password": "124", "role": "Service Engineer", "name": "Harnual Roshid (Engineer)"},
+    "eng2": {"password": "124", "role": "Service Engineer", "name": "Krishna Kanta Hazarika (Engineer)"},
+    "eng3": {"password": "124", "role": "Service Engineer", "name": "Shaha Alom (Engineer)"},
+    "eng4": {"password": "124", "role": "Service Engineer", "name": "Suman Kumar (Engineer)"},
+    "eng5": {"password": "124", "role": "Service Engineer", "name": "Belikson Momin (Engineer)"},
+    "eng6": {"password": "124", "role": "Service Engineer", "name": "Sengvear Momin (Engineer)"},
+    "eng7": {"password": "124", "role": "Service Engineer", "name": "Ramij Ali (Engineer)"},
+    "eng8": {"password": "124", "role": "Service Engineer", "name": "George Momin (Engineer)"},
+    "eng9": {"password": "124", "role": "Service Engineer", "name": "Mofidul Islam (Engineer)"},
+    "eng10": {"password": "124", "role": "Service Engineer", "name": "Binod Sangma (Engineer)"},
+    "eng11": {"password": "124", "role": "Service Engineer", "name": "Rakibul Islam (Engineer)"},
+    "eng12": {"password": "124", "role": "Service Engineer", "name": "Alexbirth Sangma (Engineer)"},
+    "eng13": {"password": "124", "role": "Service Engineer", "name": "Habizul Rahman (Engineer)"},
+    "eng14": {"password": "124", "role": "Service Engineer", "name": "Stebirth Sangma (Engineer)"},
+    "eng15": {"password": "124", "role": "Service Engineer", "name": "Khairul Islam (Engineer)"}
 }
 
-ENGINEERS_LIST = {u: f"{USERS[u]['name']} (📞 {USERS[u]['phone']})" for u in USERS if USERS[u]["role"] == "Service Engineer"}
-MANAGERS_LIST = {u: f"{USERS[u]['name']} (📞 {USERS[u]['phone']})" for u in USERS if USERS[u]["role"] == "Service Manager"}
+ENGINEERS_LIST = {u: USERS[u]['name'] for u in USERS if USERS[u]["role"] == "Service Engineer"}
+MANAGERS_LIST = {u: USERS[u]['name'] for u in USERS if USERS[u]["role"] == "Service Manager"}
 JC_LIST = ["Tura", "Shillong", "Jowai"]
 
 def save_image_buffer(image_buffer, prefix, user_or_ticket):
@@ -321,9 +369,8 @@ else:
     col_t1, col_t2, col_t3 = st.columns([3, 1, 1])
     with col_t1:
         st.title("⚡ DG Fault Management Portal")
-        jc_badge = f" | Supervised JC: **{user.get('jc')}**" if user.get('jc') else ""
-        mob_badge = f" | 📱 **{user.get('phone', '')}**"
-        st.caption(f"Logged in: **{user['name']}** ({current_username}){mob_badge} | Role: **{role}**{jc_badge}")
+        jc_badge = f" | Assigned/Supervised JC: **{user.get('jc')}**" if user.get('jc') else ""
+        st.caption(f"Logged in: **{user['name']}** ({current_username}) | Role: **{role}**{jc_badge}")
         if user_loc:
             st.markdown(f"[📍 View Login Location on Google Maps]({user_loc})")
     with col_t2:
@@ -340,20 +387,22 @@ else:
 
     st.divider()
 
-    # 1. Utility Technician Fault Logging Form
+    # 1. Utility Technician Fault Logging Form (Auto-Selected & Locked JC)
     if role == "Utility Technician":
         st.subheader("Log New DG Fault Request")
-        default_user_phone = user.get("phone", "")
+        user_assigned_jc = user.get("jc", "Shillong")
+
         with st.form("new_fault_form"):
             c_site, c_jc = st.columns([2, 1])
             with c_site:
                 site = st.text_input("Site ID (e.g. GUW-10)")
             with c_jc:
-                selected_jc = st.selectbox("Job Centre (JC)", JC_LIST)
+                jc_index = JC_LIST.index(user_assigned_jc) if user_assigned_jc in JC_LIST else 0
+                selected_jc = st.selectbox("Job Centre (JC)", JC_LIST, index=jc_index, disabled=True)
             
             c_mob, c_dg1, c_dg2 = st.columns([1.5, 1, 1])
             with c_mob:
-                contact_mobile = st.text_input("Contact Mobile Number (10 digits)", value=default_user_phone, max_chars=10, help="Enter active 10-digit mobile number")
+                contact_mobile = st.text_input("Contact Mobile Number (10 digits)", max_chars=10, help="Enter active 10-digit mobile number")
             with c_dg1:
                 dg_make = st.selectbox("DG Make", ["Kirloskar", "Mahindra", "Eicher"])
             with c_dg2:
@@ -579,8 +628,8 @@ else:
                     except Exception:
                         pass
 
-        elif role == "Service Manager":
-            # Service Manager: Tickets in supervised JC (All for central admin) (Open + Closed within 30 days)
+        elif role in ["Service Manager", "Data Analysis"]:
+            # Service Manager & Data Analysis: Tickets in supervised JC (All for Central Supervisor)
             mgr_jc = user.get("jc", "")
             if (mgr_jc == "All") or (t_jc == mgr_jc):
                 if t_status != "CLOSED":
@@ -698,9 +747,7 @@ else:
             if t_docket:
                 eng_info = USERS.get(t_eng, {})
                 eng_name = eng_info.get("name", t_eng)
-                eng_phone = eng_info.get("phone", "")
-                phone_html = f" | 📱 [**Call {eng_phone}**](tel:{eng_phone})" if eng_phone else ""
-                st.markdown(f"Docket No: **{t_docket}** | Assigned Engineer: **{eng_name}**{phone_html}")
+                st.markdown(f"Docket No: **{t_docket}** | Assigned Engineer: **{eng_name}**")
 
             if t_rect:
                 st.warning(f"Rectification Notes: {t_rect}")

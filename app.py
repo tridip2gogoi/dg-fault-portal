@@ -353,7 +353,7 @@ if not st.session_state.logged_in:
                     })
 
         if summary_records:
-            st.markdown("##### 📈 Date-wise & JC-wise Breakdown")
+            st.markdown("##### 📈 Date-wise & JC-wise")
             st.dataframe(pd.DataFrame(summary_records), use_container_width=True)
 
 else:
@@ -587,7 +587,7 @@ else:
             filtered_rows.append((r, t_jc, trt_str, trt_cat))
 
     # ----------------- MASTER TICKETS TABLE (ALL TKT EKELOGE) -----------------
-    st.markdown("### 📋 All Tickets Master Table (একেদমে সকলো টিকট একেলগে)")
+    st.markdown("### 📋 All Tickets Master Table")
     st.caption(f"Showing **{len(filtered_rows)}** matching tickets for your access")
 
     if filtered_rows:
@@ -633,7 +633,7 @@ else:
 
     # ----------------- DATE-WISE & JC-WISE ANALYTICS TABLE -----------------
     st.write("---")
-    st.markdown("### 📈 Date-wise & JC-wise Breakdown")
+    st.markdown("### 📈 Date-wise & JC-wise")
     st.caption("Owner নিৰীক্ষণৰ বাবে: Log Date-wise Total ➔ Approved Total ➔ Pending Total ➔ Reject Total ➔ Closed Date-wise Total")
 
     analytics_rows = []

@@ -137,7 +137,6 @@ def send_telegram_alert(message_text):
 
 # ----------------- USER ACCOUNTS -----------------
 USERS = {
-    # Data Analysis & Central Supervisor
     "tridip.gogoi": {"password": "Gogoi@6095", "role": "Data Analysis", "name": "Central Supervisor (All JC)", "jc": "All"},
 
     # ----------------- UTILITY TECHNICIANS (64 USERS MAPPED TO JC) -----------------
@@ -343,22 +342,6 @@ if not st.session_state.logged_in:
             else:
                 st.error("Invalid Username or Password!")
 
-    # ----------------- PUBLIC LIVE TT SUMMARY ON LOGIN PAGE -----------------
-    st.divider()
-    st.subheader("📊 Live DG Fault Tracker & Project Overview (Public View)")
-
-    public_rows = load_all_faults()
-    pub_total = len(public_rows)
-    pub_pending_sm = sum(1 for r in public_rows if r[4] == 'PENDING_SM')
-    pub_in_prog = sum(1 for r in public_rows if r[4] in ['PENDING_DOCKET', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY', 'PENDING_UT_SUP_VERIFY'])
-    pub_closed = sum(1 for r in public_rows if r[4] == 'CLOSED')
-
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Total Tickets", pub_total)
-    k2.metric("Pending SM Approval", pub_pending_sm)
-    k3.metric("Under Rectification", pub_in_prog)
-    k4.metric("Total Closed", pub_closed)
-
 else:
     current_username = st.session_state.username
     user = st.session_state.user_info
@@ -481,97 +464,9 @@ else:
         st.divider()
 
     # =========================================================================
-    # 1. TOTAL DASHBOARD (Project Overview - Visible to All)
+    # USER-SPECIFIC LIVE DG FAULT TRACKER & KPI DASHBOARD
     # =========================================================================
-    st.subheader("📊 Live DG Fault Tracker & Project Overview (Total Dashboard)")
-
     all_rows = load_all_faults()
-
-    total_count = len(all_rows)
-    pending_sm_count = sum(1 for r in all_rows if str(r[4]).strip() == 'PENDING_SM')
-    in_progress_count = sum(1 for r in all_rows if str(r[4]).strip() in ['PENDING_DOCKET', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY', 'PENDING_UT_SUP_VERIFY'])
-    closed_count = sum(1 for r in all_rows if str(r[4]).strip() == 'CLOSED')
-
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    kpi1.metric("Total Tickets", total_count)
-    kpi2.metric("Pending SM Approval", pending_sm_count)
-    kpi3.metric("Under Rectification", in_progress_count)
-    kpi4.metric("Total Closed", closed_count)
-
-    # TRT Aging & Date-wise Project Summary Calculation
-    analytics_rows = []
-    normal_trt_count = 0
-    warning_trt_count = 0
-    critical_trt_count = 0
-
-    for r in all_rows:
-        t_id, t_site, t_status = r[0], r[1], r[4]
-        t_created, t_closed = r[16], r[17]
-
-        t_jc = "Unknown"
-        for jc_opt in JC_LIST:
-            if f"[{jc_opt}]" in t_site:
-                t_jc = jc_opt
-                break
-
-        trt_str, trt_cat, _ = calculate_trt(t_created, t_closed)
-        if trt_cat == "Normal (< 24h)":
-            normal_trt_count += 1
-        elif trt_cat == "Warning (24-48h)":
-            warning_trt_count += 1
-        elif trt_cat == "Critical (> 48h)":
-            critical_trt_count += 1
-
-        analytics_rows.append({
-            "Ticket ID": t_id,
-            "JC": t_jc,
-            "Log Date": str(t_created).split(" ")[0] if t_created else "N/A",
-            "Close Date": str(t_closed).split(" ")[0] if t_closed else "N/A",
-            "Status": t_status,
-            "TRT Category": trt_cat
-        })
-
-    # Aging Overview Bar
-    st.write("---")
-    st.markdown("##### ⏳ Overall TRT Aging Summary (All Tickets)")
-    ag1, ag2, ag3 = st.columns(3)
-    ag1.metric("🟢 Normal (< 24h)", normal_trt_count)
-    ag2.metric("🟡 Warning (24-48h)", warning_trt_count)
-    ag3.metric("🔴 Critical (> 48h)", critical_trt_count)
-
-    # Date-wise & JC-wise Breakdown Table
-    if analytics_rows:
-        df_all = pd.DataFrame(analytics_rows)
-        dates_list = sorted(list(set(df_all["Log Date"].unique()) - {"N/A"}), reverse=True)
-
-        summary_records = []
-        for d in dates_list:
-            d_df = df_all[df_all["Log Date"] == d]
-            for jc in JC_LIST:
-                jc_df = d_df[d_df["JC"] == jc]
-                t_log = len(jc_df)
-                if t_log > 0:
-                    summary_records.append({
-                        "Date": d,
-                        "Job Centre (JC)": jc,
-                        "Log Date Total": t_log,
-                        "Approved": len(jc_df[~jc_df["Status"].isin(["PENDING_SM", "REJECTED"])]),
-                        "Pending SM": len(jc_df[jc_df["Status"] == "PENDING_SM"]),
-                        "Rejected": len(jc_df[jc_df["Status"] == "REJECTED"]),
-                        "Closed on Date": len(df_all[(df_all["Close Date"] == d) & (df_all["JC"] == jc) & (df_all["Status"] == "CLOSED")])
-                    })
-
-        if summary_records:
-            with st.expander("📈 View Date-wise & JC-wise Project Breakdown Table", expanded=False):
-                st.dataframe(pd.DataFrame(summary_records), use_container_width=True)
-
-    st.divider()
-
-    # =========================================================================
-    # 2. USER'S OWN CASES (Actionable Cases & Action Cards)
-    # =========================================================================
-    st.subheader(f"📌 My Actionable Cases ({user['name']})")
-
     now_ist_dt = get_ist_now().replace(tzinfo=None)
     retention_limit_days = 30
 
@@ -593,11 +488,10 @@ else:
                 t_jc = jc_opt
                 break
 
-        # Role-based User Filtering
         is_my_case = False
 
         if role == "Utility Technician":
-            # Technician: Own created tickets (Open + Closed within 30 days)
+            # Own created tickets (Open + Closed within 30 days)
             if t_logged_by == current_username:
                 if t_status != "CLOSED":
                     is_my_case = True
@@ -610,12 +504,12 @@ else:
                         pass
 
         elif role == "Service Engineer":
-            # Service Engineer: ONLY OPEN CASES assigned to this engineer
+            # Only open cases assigned to this engineer
             if t_eng == current_username and t_status != "CLOSED":
                 is_my_case = True
 
         elif role == "UT Supervisor":
-            # UT Supervisor: Tickets in supervised JC (Open + Closed within 30 days)
+            # Supervised JC (Open + Closed within 30 days)
             sup_jc = user.get("jc", "")
             if (sup_jc == "All") or (t_jc == sup_jc):
                 if t_status != "CLOSED":
@@ -629,7 +523,7 @@ else:
                         pass
 
         elif role in ["Service Manager", "Data Analysis"]:
-            # Service Manager & Data Analysis: Tickets in supervised JC (All for Central Supervisor)
+            # Supervised JC (All for Central Supervisor)
             mgr_jc = user.get("jc", "")
             if (mgr_jc == "All") or (t_jc == mgr_jc):
                 if t_status != "CLOSED":
@@ -643,7 +537,6 @@ else:
                         pass
 
         elif role == "Docket Team":
-            # Docket Desk: Tickets needing assignment or actively in progress
             if t_status in ["PENDING_DOCKET", "ASSIGNED_ENG", "PENDING_UT_VERIFY", "PENDING_UT_SUP_VERIFY"]:
                 is_my_case = True
 
@@ -651,9 +544,39 @@ else:
             trt_str, trt_cat, trt_hours = calculate_trt(t_created, t_closed)
             my_cases.append((r, t_jc, trt_str, trt_cat))
 
-    # ----------------- MY TICKETS MASTER TABLE -----------------
+    # --- Live Tracker Metrics for the Logged-in User ---
+    st.subheader(f"📊 My Live DG Fault Tracker ({user['name']})")
+
+    user_total_count = len(my_cases)
+    user_pending_sm_count = sum(1 for item in my_cases if str(item[0][4]).strip() == 'PENDING_SM')
+    user_in_progress_count = sum(1 for item in my_cases if str(item[0][4]).strip() in ['PENDING_DOCKET', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY', 'PENDING_UT_SUP_VERIFY'])
+    user_closed_count = sum(1 for item in my_cases if str(item[0][4]).strip() == 'CLOSED')
+
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("My Total Active Cases", user_total_count)
+    kpi2.metric("My Pending SM Approval", user_pending_sm_count)
+    kpi3.metric("My In Progress / Rectification", user_in_progress_count)
+    kpi4.metric("My Closed (Last 30 Days)", user_closed_count)
+
+    # User-Only TRT Aging Bar
+    user_normal_trt = sum(1 for item in my_cases if item[3] == "Normal (< 24h)")
+    user_warning_trt = sum(1 for item in my_cases if item[3] == "Warning (24-48h)")
+    user_critical_trt = sum(1 for item in my_cases if item[3] == "Critical (> 48h)")
+
+    st.write("---")
+    st.markdown("##### ⏳ My Active Cases TRT Aging")
+    ag1, ag2, ag3 = st.columns(3)
+    ag1.metric("🟢 Normal (< 24h)", user_normal_trt)
+    ag2.metric("🟡 Warning (24-48h)", user_warning_trt)
+    ag3.metric("🔴 Critical (> 48h)", user_critical_trt)
+
+    st.divider()
+
+    # =========================================================================
+    # USER'S TICKETS MASTER TABLE
+    # =========================================================================
     st.markdown("### 📋 My Tickets Master Table")
-    st.caption(f"Showing **{len(my_cases)}** active or recently closed tickets assigned to or created by you")
+    st.caption(f"Showing **{len(my_cases)}** actionable tickets assigned to or created by you")
 
     if my_cases:
         table_data = []
@@ -696,15 +619,17 @@ else:
     else:
         st.info("No active tickets found matching your user account.")
 
-    # ----------------- DETAILED TICKET ACTION CARDS (USER'S CASES ONLY) -----------------
+    # =========================================================================
+    # DETAILED TICKET ACTION CARDS (USER'S CASES ONLY)
+    # =========================================================================
     st.write("---")
     st.subheader("🔍 Ticket Action & Individual Details")
 
     for item in reversed(my_cases):
         r, ticket_jc, trt_str, trt_cat = item
         (t_id, t_site, t_dg, t_desc, t_status, t_docket, t_eng, t_logged_by, 
-         t_mobile, t_l_selfie, t_l_loc, t_act_selfie, t_act_loc, t_rect, t_fphoto, t_rphoto, 
-         t_created_at, t_closed_at) = r
+         t_mobile, t_l_selfie, t_l_loc, t_act_selfie, t_act_loc, t_rect, 
+         t_fphoto, t_rphoto, t_created_at, t_closed_at) = r
 
         created_str = format_dt(t_created_at)
         closed_str = format_dt(t_closed_at)

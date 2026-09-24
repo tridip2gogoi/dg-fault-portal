@@ -51,7 +51,7 @@ def load_all_faults():
                 str(r.get("closed_at", ""))
             ])
         return rows
-    except Exception as e:
+    except Exception:
         return []
 
 def add_fault_to_sheet(row_data):
@@ -122,6 +122,7 @@ def send_telegram_alert(message_text):
 # ----------------- USER ACCOUNTS -----------------
 USERS = {
     "admin": {"password": "admin", "role": "Service Manager", "name": "Central Supervisor (All JC)", "jc": "All", "phone": "9876543210"},
+    # Utility Technicians
     "tech1": {"password": "123", "role": "Utility Technician", "name": "Anupam Kumer Shing (Tech)", "phone": "9864011111"},
     "tech2": {"password": "123", "role": "Utility Technician", "name": "Jul Hussain (Tech)", "phone": "9864022222"},
     "tech3": {"password": "123", "role": "Utility Technician", "name": "Shariful Islam (Tech)", "phone": "9864033333"},
@@ -149,10 +150,18 @@ USERS = {
     "tech25": {"password": "123", "role": "Utility Technician", "name": "Walseng B Marak (Tech)", "phone": "9864255555"},
     "tech26": {"password": "123", "role": "Utility Technician", "name": "Zeaul Hoque (Tech)", "phone": "9864266666"},
     "tech27": {"password": "123", "role": "Utility Technician", "name": "Dharamveer (Tech)", "phone": "9864277777"},
+    # UT Supervisors
+    "utsup1": {"password": "2026", "role": "UT Supervisor", "name": "Wellbertstar Jaba (UT Sup)", "jc": "Shillong", "phone": "9864000001"},
+    "utsup2": {"password": "2026", "role": "UT Supervisor", "name": "Binay Ray (UT Sup)", "jc": "Jowai", "phone": "9864000002"},
+    "utsup3": {"password": "2026", "role": "UT Supervisor", "name": "Maynal Haque (UT Sup)", "jc": "Tura", "phone": "9864000003"},
+    "utsup4": {"password": "2026", "role": "UT Supervisor", "name": "Mojib Kumar Saikia (UT Sup)", "jc": "Tura", "phone": "9864000004"},
+    # Service Managers
     "manager1": {"password": "2026", "role": "Service Manager", "name": "Ajay Sharma (SM)", "jc": "Shillong", "phone": "9435011111"},
     "manager2": {"password": "2026", "role": "Service Manager", "name": "Rakesh Ahmed (SM)", "jc": "Tura", "phone": "9435022222"},
     "manager3": {"password": "2026", "role": "Service Manager", "name": "Saharul (SM)", "jc": "Jowai", "phone": "9435033333"},
+    # Docket Desk
     "docket": {"password": "2027", "role": "Docket Team", "name": "Docket Desk", "phone": "9435044444"},
+    # Service Engineers
     "eng1": {"password": "124", "role": "Service Engineer", "name": "Harnual Roshid (Engineer)", "phone": "9706011111"},
     "eng2": {"password": "124", "role": "Service Engineer", "name": "Krishna Kanta Hazarika (Engineer)", "phone": "9706022222"},
     "eng3": {"password": "124", "role": "Service Engineer", "name": "Shaha Alom (Engineer)", "phone": "9706033333"},
@@ -277,7 +286,7 @@ if not st.session_state.logged_in:
     public_rows = load_all_faults()
     pub_total = len(public_rows)
     pub_pending_sm = sum(1 for r in public_rows if r[4] == 'PENDING_SM')
-    pub_in_prog = sum(1 for r in public_rows if r[4] in ['PENDING_DOCKET', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY'])
+    pub_in_prog = sum(1 for r in public_rows if r[4] in ['PENDING_DOCKET', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY', 'PENDING_UT_SUP_VERIFY'])
     pub_closed = sum(1 for r in public_rows if r[4] == 'CLOSED')
 
     k1, k2, k3, k4 = st.columns(4)
@@ -458,7 +467,7 @@ else:
 
     total_count = len(all_rows)
     pending_sm_count = sum(1 for r in all_rows if r[4] == 'PENDING_SM')
-    in_progress_count = sum(1 for r in all_rows if r[4] in ['PENDING_DOCKET', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY'])
+    in_progress_count = sum(1 for r in all_rows if r[4] in ['PENDING_DOCKET', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY', 'PENDING_UT_SUP_VERIFY'])
     closed_count = sum(1 for r in all_rows if r[4] == 'CLOSED')
 
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
@@ -519,6 +528,9 @@ else:
             user_match = (t_logged_by == current_username) and (t_status != "CLOSED")
         elif role == "Service Engineer":
             user_match = (t_eng == current_username) and (t_status != "CLOSED")
+        elif role == "UT Supervisor":
+            sup_jc = user.get("jc", "")
+            user_match = ((sup_jc == "All") or (t_jc == sup_jc)) and (t_status != "CLOSED")
         elif role == "Service Manager":
             mgr_jc = user.get("jc", "")
             user_match = (mgr_jc == "All") or (t_jc == mgr_jc)
@@ -805,12 +817,42 @@ else:
                     assigned_name = USERS.get(t_eng, {}).get("name", t_eng)
                     st.info(f"🔒 This ticket is assigned to **{assigned_name}**.")
 
-            # ----------------- UTILITY TECH FINAL CLOSURE -----------------
+            # ----------------- 5. UTILITY TECH VERIFICATION -----------------
             elif role == "Utility Technician" and t_status == "PENDING_UT_VERIFY":
                 if t_logged_by == current_username:
-                    st.write("🔍 *You logged this ticket. Please verify work done and decide:*")
+                    st.write("🔍 *You logged this ticket. Please verify work done and forward to UT Supervisor:*")
                     c1, c2 = st.columns(2)
-                    if c1.button("Approve & Close", key=f"ut_app_{t_id}"):
+                    if c1.button("Approve & Forward to UT Supervisor", key=f"ut_app_{t_id}"):
+                        update_fault_in_sheet(t_id, {
+                            "status": "PENDING_UT_SUP_VERIFY",
+                            "action_by_selfie": user_selfie,
+                            "action_by_loc": user_loc
+                        })
+                        send_telegram_alert(
+                            f"✅ *UT Verified & Forwarded*\n"
+                            f"Ticket: `{t_id}`\nJC: {ticket_jc}\n"
+                            f"TRT: {trt_str}\n"
+                            f"Verified By UT: {user['name']}\n"
+                            f"Status: PENDING UT SUPERVISOR FINAL APPROVAL"
+                        )
+                        st.rerun()
+                    if c2.button("Reject (Re-assign to Engineer)", key=f"ut_rej_{t_id}"):
+                        update_fault_in_sheet(t_id, {"status": "ASSIGNED_ENG"})
+                        send_telegram_alert(f"⚠️ Ticket Rejected by UT\nTicket: {t_id}\nJC: {ticket_jc}\nRe-opened for Engineer.")
+                        st.rerun()
+                else:
+                    creator_name = USERS.get(t_logged_by, {}).get("name", t_logged_by)
+                    st.warning(f"🔒 This fault was logged by **{creator_name}**. Only the creator can verify.")
+
+            # ----------------- 6. UT SUPERVISOR FINAL APPROVAL & CLOSURE -----------------
+            elif role == "UT Supervisor" and t_status == "PENDING_UT_SUP_VERIFY":
+                sup_jc = user.get("jc", "")
+                is_authorized = (sup_jc == "All") or (ticket_jc == sup_jc)
+
+                if is_authorized:
+                    st.success(f"🛡️ **Final UT Supervisor Approval Authority for {ticket_jc} JC**")
+                    c_sup1, c_sup2 = st.columns(2)
+                    if c_sup1.button("🏆 Final Approve & Close Ticket", key=f"sup_app_{t_id}"):
                         now_close = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
                         update_fault_in_sheet(t_id, {
                             "status": "CLOSED",
@@ -818,12 +860,23 @@ else:
                             "action_by_selfie": user_selfie,
                             "action_by_loc": user_loc
                         })
-                        send_telegram_alert(f"🎉 Ticket CLOSED Successfully\nTicket: {t_id}\nJC: {ticket_jc}\nTotal Resolution TRT: {trt_str}\nVerified & Closed by: {user['name']}")
+                        send_telegram_alert(
+                            f"🎉 *Ticket CLOSED (Final Approval by UT Supervisor)*\n\n"
+                            f"📌 *Ticket ID:* `{t_id}`\n"
+                            f"📍 *JC:* {ticket_jc}\n"
+                            f"⏱️ *Total Resolution TRT:* {trt_str}\n"
+                            f"👤 *Final Closed by UT Sup:* {user['name']}\n"
+                            f"🕒 *Closed At:* {format_dt(now_close)}"
+                        )
                         st.rerun()
-                    if c2.button("Reject (Re-assign to Engineer)", key=f"ut_rej_{t_id}"):
+                    if c_sup2.button("❌ Reject back to Engineer", key=f"sup_rej_{t_id}"):
                         update_fault_in_sheet(t_id, {"status": "ASSIGNED_ENG"})
-                        send_telegram_alert(f"⚠️ Ticket Verification Rejected by UT\nTicket: {t_id}\nJC: {ticket_jc}\nTRT: {trt_str}\nRe-opened for Engineer.")
+                        send_telegram_alert(
+                            f"⚠️ Final Approval Rejected by UT Sup\n"
+                            f"Ticket: {t_id}\nJC: {ticket_jc}\n"
+                            f"Rejected by: {user['name']}\n"
+                            f"Status: Re-assigned to Engineer"
+                        )
                         st.rerun()
                 else:
-                    creator_name = USERS.get(t_logged_by, {}).get("name", t_logged_by)
-                    st.warning(f"🔒 This fault was logged by **{creator_name}**. Only the creator can close it.")
+                    st.warning(f"🔒 This ticket belongs to **{ticket_jc} JC**. Only **{ticket_jc} UT Supervisor** can grant final closure.")

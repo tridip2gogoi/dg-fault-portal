@@ -1,10 +1,11 @@
 import streamlit as st
-import sqlite3
 import os
 import requests
 import pytz
 import pandas as pd
 import io
+import gspread
+from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 from streamlit_js_eval import get_geolocation
 
@@ -12,6 +13,77 @@ st.set_page_config(page_title="DG Fault Portal", layout="wide")
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# ----------------- GOOGLE SHEETS CONNECTION -----------------
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
+@st.cache_resource
+def get_gspread_client():
+    creds_dict = dict(st.secrets["gcp_service_account"])
+    if "\\n" in creds_dict["private_key"]:
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+    credentials = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+    client = gspread.authorize(credentials)
+    return client
+
+def get_worksheet():
+    client = get_gspread_client()
+    sh = client.open("dg_faults_db")
+    return sh.sheet1
+
+SHEET_HEADERS = [
+    "id", "site", "dg", "desc", "status", "docket", "assigned_eng",
+    "logged_by", "logged_by_selfie", "logged_by_loc", "action_by_selfie",
+    "action_by_loc", "rectification", "fault_photo", "rect_photo",
+    "created_at", "closed_at"
+]
+
+def load_all_faults():
+    ws = get_worksheet()
+    records = ws.get_all_records()
+    rows = []
+    for r in records:
+        rows.append([
+            str(r.get("id", "")),
+            str(r.get("site", "")),
+            str(r.get("dg", "")),
+            str(r.get("desc", "")),
+            str(r.get("status", "")),
+            str(r.get("docket", "")),
+            str(r.get("assigned_eng", "")),
+            str(r.get("logged_by", "")),
+            str(r.get("logged_by_selfie", "")),
+            str(r.get("logged_by_loc", "")),
+            str(r.get("action_by_selfie", "")),
+            str(r.get("action_by_loc", "")),
+            str(r.get("rectification", "")),
+            str(r.get("fault_photo", "")),
+            str(r.get("rect_photo", "")),
+            str(r.get("created_at", "")),
+            str(r.get("closed_at", ""))
+        ])
+    return rows
+
+def add_fault_to_sheet(row_data):
+    ws = get_worksheet()
+    ws.append_row(row_data)
+
+def update_fault_in_sheet(ticket_id, updates_dict):
+    ws = get_worksheet()
+    records = ws.get_all_records()
+    row_idx = None
+    for idx, r in enumerate(records):
+        if str(r.get("id")) == str(ticket_id):
+            row_idx = idx + 2
+            break
+    if row_idx:
+        for col_name, val in updates_dict.items():
+            if col_name in SHEET_HEADERS:
+                col_num = SHEET_HEADERS.index(col_name) + 1
+                ws.update_cell(row_idx, col_num, str(val))
 
 # ----------------- IST & TRT TIME HELPERS -----------------
 def get_ist_now():
@@ -24,7 +96,6 @@ def calculate_trt(created_at_str, closed_at_str=None):
     try:
         clean_created = created_at_str.split(".")[0]
         c_dt = datetime.strptime(clean_created, "%Y-%m-%d %H:%M:%S")
-        
         if closed_at_str:
             clean_closed = closed_at_str.split(".")[0]
             end_dt = datetime.strptime(clean_closed, "%Y-%m-%d %H:%M:%S")
@@ -57,10 +128,7 @@ def send_telegram_alert(message_text):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message_text
-    }
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message_text}
     try:
         requests.post(url, json=payload, timeout=5)
     except Exception:
@@ -68,10 +136,7 @@ def send_telegram_alert(message_text):
 
 # ----------------- USER ACCOUNTS -----------------
 USERS = {
-    # Owner (Access & Approval for ALL JC)
-    "tridip2gogoi": {"password": "Gogoi$6095", "role": "Circle MIS", "name": "Tridip Gogoi (All JC)", "jc": "All"},
-
-    # 27 Utility Technicians
+    "admin": {"password": "admin", "role": "Service Manager", "name": "Central Supervisor (All JC)", "jc": "All"},
     "tech1": {"password": "123", "role": "Utility Technician", "name": "Anupam Kumer Shing (Tech)"},
     "tech2": {"password": "123", "role": "Utility Technician", "name": "Jul Hussain (Tech)"},
     "tech3": {"password": "123", "role": "Utility Technician", "name": "Shariful Islam (Tech)"},
@@ -99,16 +164,10 @@ USERS = {
     "tech25": {"password": "123", "role": "Utility Technician", "name": "Walseng B Marak (Tech)"},
     "tech26": {"password": "123", "role": "Utility Technician", "name": "Zeaul Hoque (Tech)"},
     "tech27": {"password": "123", "role": "Utility Technician", "name": "Dharamveer (Tech)"},
-    
-    # 3 Service Managers (JC-Mapped)
     "manager1": {"password": "2026", "role": "Service Manager", "name": "Ajay Sharma (SM)", "jc": "Shillong"},
     "manager2": {"password": "2026", "role": "Service Manager", "name": "Rakesh Ahmed (SM)", "jc": "Tura"},
     "manager3": {"password": "2026", "role": "Service Manager", "name": "Saharul (SM)", "jc": "Jowai"},
-    
-    # Docket Desk
     "docket": {"password": "2027", "role": "Docket Team", "name": "Docket Desk"},
-    
-    # 15 Service Engineers
     "eng1": {"password": "124", "role": "Service Engineer", "name": "Harnual Roshid (Engineer)"},
     "eng2": {"password": "124", "role": "Service Engineer", "name": "Krishna Kanta Hazarika (Engineer)"},
     "eng3": {"password": "124", "role": "Service Engineer", "name": "Shaha Alom (Engineer)"},
@@ -129,37 +188,6 @@ USERS = {
 ENGINEERS_LIST = {u: USERS[u]["name"] for u in USERS if USERS[u]["role"] == "Service Engineer"}
 MANAGERS_LIST = {u: USERS[u]["name"] for u in USERS if USERS[u]["role"] == "Service Manager"}
 JC_LIST = ["Tura", "Shillong", "Jowai"]
-
-# ----------------- DATABASE SETUP -----------------
-conn = sqlite3.connect("dg_faults_v2.db", check_same_thread=False)
-cursor = conn.cursor()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS faults (
-    id TEXT PRIMARY KEY,
-    site TEXT,
-    dg TEXT,
-    desc TEXT,
-    status TEXT,
-    docket TEXT,
-    assigned_eng TEXT,
-    logged_by TEXT,
-    logged_by_selfie TEXT,
-    logged_by_loc TEXT,
-    action_by_selfie TEXT,
-    action_by_loc TEXT,
-    rectification TEXT,
-    fault_photo TEXT,
-    rect_photo TEXT,
-    created_at TEXT,
-    closed_at TEXT
-)
-""")
-conn.commit()
-
-thirty_days_ago = (get_ist_now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
-cursor.execute("DELETE FROM faults WHERE status = 'CLOSED' AND closed_at < ?", (thirty_days_ago,))
-conn.commit()
 
 def save_image_buffer(image_buffer, prefix, user_or_ticket):
     if image_buffer is not None:
@@ -202,11 +230,8 @@ def format_dt(dt_val):
     if not dt_val:
         return ""
     try:
-        if isinstance(dt_val, str):
-            clean_str = dt_val.split(".")[0]
-            dt_obj = datetime.strptime(clean_str, "%Y-%m-%d %H:%M:%S")
-        else:
-            dt_obj = dt_val
+        clean_str = str(dt_val).split(".")[0]
+        dt_obj = datetime.strptime(clean_str, "%Y-%m-%d %H:%M:%S")
         return dt_obj.strftime("%d-%b-%Y, %I:%M %p")
     except Exception:
         return str(dt_val)[:16]
@@ -326,9 +351,8 @@ else:
                 else:
                     support_final_name = selected_support_person
 
-                cursor.execute("SELECT COUNT(*) FROM faults")
-                count = cursor.fetchone()[0]
-                new_id = f"TKT-{count + 101}"
+                all_current_rows = load_all_faults()
+                new_id = f"TKT-{len(all_current_rows) + 101}"
                 photo_paths = save_multiple_images(fault_imgs, "fault", new_id)
 
                 site_with_jc = f"{site} [{selected_jc}]"
@@ -341,20 +365,12 @@ else:
                     f"💡 Support Guidance: {online_sup_remarks if online_sup_remarks else 'N/A'}"
                 )
 
-                cursor.execute("""
-                    INSERT INTO faults (
-                        id, site, dg, desc, status, docket, assigned_eng, 
-                        logged_by, logged_by_selfie, logged_by_loc, 
-                        action_by_selfie, action_by_loc, rectification, 
-                        fault_photo, rect_photo, created_at, closed_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
+                row_payload = [
                     new_id, site_with_jc, dg_combined, full_desc, 'PENDING_SM', '', '', 
                     current_username, user_selfie, user_loc, 
-                    '', '', '', photo_paths, '', now_time, None
-                ))
-                conn.commit()
+                    '', '', '', photo_paths, '', now_time, ''
+                ]
+                add_fault_to_sheet(row_payload)
 
                 photo_count = len(fault_imgs) if fault_imgs else 0
                 tg_msg = (
@@ -372,7 +388,7 @@ else:
                 )
                 send_telegram_alert(tg_msg)
 
-                st.success(f"Fault ticket {new_id} created successfully! Telegram notification sent.")
+                st.success(f"Fault ticket {new_id} saved to Google Sheets! Telegram notification sent.")
                 st.rerun()
             elif submit:
                 st.error("Site ID and Fault Remarks are required!")
@@ -382,11 +398,7 @@ else:
     # ----------------- CENTRAL OWNER & SUPERVISOR DASHBOARD -----------------
     st.subheader("📊 Fault Tracker & Performance Summary")
 
-    cursor.execute("""
-        SELECT id, site, dg, desc, status, docket, assigned_eng, logged_by, logged_by_selfie, logged_by_loc, action_by_selfie, action_by_loc, rectification, fault_photo, rect_photo, created_at, closed_at 
-        FROM faults ORDER BY created_at DESC
-    """)
-    all_rows = cursor.fetchall()
+    all_rows = load_all_faults()
 
     # High-level Metrics Cards
     total_count = len(all_rows)
@@ -443,8 +455,6 @@ else:
                     t_approved = len(jc_df[~jc_df["Status"].isin(["PENDING_SM", "REJECTED"])])
                     t_pending = len(jc_df[jc_df["Status"] == "PENDING_SM"])
                     t_rejected = len(jc_df[jc_df["Status"] == "REJECTED"])
-                    
-                    # Closed Date-wise: সেই তাৰিখত সেই JC-ত কিমান বন্ধ হ'ল
                     t_closed_on_date = len(df_all[(df_all["Close Date"] == d) & (df_all["JC"] == jc) & (df_all["Status"] == "CLOSED")])
 
                     summary_records.append({
@@ -460,7 +470,6 @@ else:
         summary_df = pd.DataFrame(summary_records)
         st.dataframe(summary_df, use_container_width=True)
 
-        # Excel Export Button
         excel_buffer = io.BytesIO()
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             summary_df.to_excel(writer, index=False, sheet_name="Date_JC_Summary")
@@ -486,7 +495,7 @@ else:
     with f_c2:
         jc_filter = st.selectbox("📍 Filter by Job Centre (JC):", ["All JCs"] + JC_LIST)
     with f_c3:
-        sm_filter_list = ["All Managers", "Owner/Admin (All JC)", "Ajay Sharma (SM - Shillong)", "Rakesh Ahmed (SM - Tura)", "Saharul (SM - Jowai)"]
+        sm_filter_list = ["All Managers", "Central Supervisor (All JC)", "Ajay Sharma (SM - Shillong)", "Rakesh Ahmed (SM - Tura)", "Saharul (SM - Jowai)"]
         sm_filter = st.selectbox("👤 Filter by Responsible SM:", sm_filter_list)
 
     # Filter Rows Logic
@@ -531,7 +540,7 @@ else:
     if not filtered_rows:
         st.info("No tickets found matching the selected filters.")
 
-    for item in filtered_rows:
+    for item in reversed(filtered_rows):
         r, ticket_jc, trt_str, trt_cat = item
         (t_id, t_site, t_dg, t_desc, t_status, t_docket, t_eng, t_logged_by, 
          t_l_selfie, t_l_loc, t_act_selfie, t_act_loc, t_rect, t_fphoto, t_rphoto, 
@@ -596,39 +605,29 @@ else:
             # ----------------- SERVICE MANAGER & OWNER APPROVAL -----------------
             if role == "Service Manager" and t_status == "PENDING_SM":
                 manager_jc = user.get("jc", "")
-                
                 is_authorized = (manager_jc == "All") or (ticket_jc == manager_jc)
 
                 if is_authorized:
                     st.success(f"✔️ You hold approval authority for **{ticket_jc} JC** | Elapsed TRT: **{trt_str}**")
                     c1, c2 = st.columns(2)
                     if c1.button("✅ Approve", key=f"sm_app_{t_id}"):
-                        cursor.execute("""
-                            UPDATE faults SET status = 'PENDING_DOCKET', action_by_selfie = ?, action_by_loc = ? 
-                            WHERE id = ?
-                        """, (user_selfie, user_loc, t_id))
-                        conn.commit()
+                        update_fault_in_sheet(t_id, {
+                            "status": "PENDING_DOCKET",
+                            "action_by_selfie": user_selfie,
+                            "action_by_loc": user_loc
+                        })
                         send_telegram_alert(
-                            f"✅ Fault APPROVED by SM\n"
-                            f"Ticket: {t_id}\n"
-                            f"JC: {ticket_jc}\n"
-                            f"TRT at Approval: {trt_str}\n"
-                            f"Manager: {user['name']}\n"
-                            f"Status: PENDING DOCKET"
+                            f"✅ Fault APPROVED by SM\nTicket: {t_id}\nJC: {ticket_jc}\nTRT at Approval: {trt_str}\nManager: {user['name']}\nStatus: PENDING DOCKET"
                         )
                         st.rerun()
                     if c2.button("❌ Reject", key=f"sm_rej_{t_id}"):
-                        cursor.execute("""
-                            UPDATE faults SET status = 'REJECTED', action_by_selfie = ?, action_by_loc = ? 
-                            WHERE id = ?
-                        """, (user_selfie, user_loc, t_id))
-                        conn.commit()
+                        update_fault_in_sheet(t_id, {
+                            "status": "REJECTED",
+                            "action_by_selfie": user_selfie,
+                            "action_by_loc": user_loc
+                        })
                         send_telegram_alert(
-                            f"❌ Fault REJECTED by SM\n"
-                            f"Ticket: {t_id}\n"
-                            f"JC: {ticket_jc}\n"
-                            f"TRT at Rejection: {trt_str}\n"
-                            f"Manager: {user['name']}"
+                            f"❌ Fault REJECTED by SM\nTicket: {t_id}\nJC: {ticket_jc}\nTRT at Rejection: {trt_str}\nManager: {user['name']}"
                         )
                         st.rerun()
                 else:
@@ -653,11 +652,11 @@ else:
                     )
                 if st.button("Submit & Assign", key=f"doc_btn_{t_id}"):
                     if d_no:
-                        cursor.execute("""
-                            UPDATE faults SET docket = ?, assigned_eng = ?, status = 'ASSIGNED_ENG' 
-                            WHERE id = ?
-                        """, (d_no, selected_eng, t_id))
-                        conn.commit()
+                        update_fault_in_sheet(t_id, {
+                            "docket": d_no,
+                            "assigned_eng": selected_eng,
+                            "status": "ASSIGNED_ENG"
+                        })
                         eng_name = ENGINEERS_LIST[selected_eng]
                         send_telegram_alert(f"📋 Docket Assigned\nTicket: {t_id}\nJC: {ticket_jc}\nTRT: {trt_str}\nDocket No: {d_no}\nAssigned Engineer: {eng_name}")
                         st.rerun()
@@ -674,12 +673,13 @@ else:
                     if st.button("Request Close", key=f"eng_btn_{t_id}"):
                         if notes:
                             rect_photo_paths = save_multiple_images(rect_imgs, "rect", t_id)
-                            cursor.execute("""
-                                UPDATE faults 
-                                SET rectification = ?, rect_photo = ?, status = 'PENDING_UT_VERIFY', action_by_selfie = ?, action_by_loc = ? 
-                                WHERE id = ?
-                            """, (notes, rect_photo_paths, user_selfie, user_loc, t_id))
-                            conn.commit()
+                            update_fault_in_sheet(t_id, {
+                                "rectification": notes,
+                                "rect_photo": rect_photo_paths,
+                                "status": "PENDING_UT_VERIFY",
+                                "action_by_selfie": user_selfie,
+                                "action_by_loc": user_loc
+                            })
                             rect_count = len(rect_imgs) if rect_imgs else 0
                             send_telegram_alert(f"🔧 Work Completed by Engineer\nTicket: {t_id}\nJC: {ticket_jc}\nTRT: {trt_str}\nEngineer: {user['name']}\nWork Photos: {rect_count}\nStatus: PENDING UT VERIFICATION")
                             st.rerun()
@@ -696,16 +696,16 @@ else:
                     c1, c2 = st.columns(2)
                     if c1.button("Approve & Close", key=f"ut_app_{t_id}"):
                         now_close = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
-                        cursor.execute("""
-                            UPDATE faults SET status = 'CLOSED', closed_at = ?, action_by_selfie = ?, action_by_loc = ? 
-                            WHERE id = ?
-                        """, (now_close, user_selfie, user_loc, t_id))
-                        conn.commit()
+                        update_fault_in_sheet(t_id, {
+                            "status": "CLOSED",
+                            "closed_at": now_close,
+                            "action_by_selfie": user_selfie,
+                            "action_by_loc": user_loc
+                        })
                         send_telegram_alert(f"🎉 Ticket CLOSED Successfully\nTicket: {t_id}\nJC: {ticket_jc}\nTotal Resolution TRT: {trt_str}\nVerified & Closed by: {user['name']}")
                         st.rerun()
                     if c2.button("Reject (Re-assign to Engineer)", key=f"ut_rej_{t_id}"):
-                        cursor.execute("UPDATE faults SET status = 'ASSIGNED_ENG' WHERE id = ?", (t_id,))
-                        conn.commit()
+                        update_fault_in_sheet(t_id, {"status": "ASSIGNED_ENG"})
                         send_telegram_alert(f"⚠️ Ticket Verification Rejected by UT\nTicket: {t_id}\nJC: {ticket_jc}\nTRT: {trt_str}\nRe-opened for Engineer.")
                         st.rerun()
                 else:

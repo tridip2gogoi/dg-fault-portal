@@ -5,8 +5,6 @@ import pytz
 import pandas as pd
 import io
 import re
-import gspread
-from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 from streamlit_js_eval import get_geolocation
 
@@ -15,27 +13,9 @@ st.set_page_config(page_title="DG Fault Portal", layout="wide")
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# ----------------- GOOGLE SHEETS CONNECTION -----------------
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
-
-@st.cache_resource
-def get_gspread_client():
-    if os.path.exists("service_account.json"):
-        credentials = Credentials.from_service_account_file("service_account.json", scopes=SCOPES)
-    else:
-        creds_dict = dict(st.secrets["gcp_service_account"])
-        if "\\n" in creds_dict.get("private_key", ""):
-            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-        credentials = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-    return gspread.authorize(credentials)
-
-def get_worksheet():
-    client = get_gspread_client()
-    sh = client.open("dg_faults_db")
-    return sh.sheet1
+# ----------------- GOOGLE APPS SCRIPT WEB APP CONNECTION -----------------
+# তলত আপোনাৰ Google Sheet Apps Script Deploy কৰি পোৱা Web App URL টো বহুৱাওক:
+SHEET_API_URL = "https://script.google.com/macros/s/AKfycbxYOUR_DEPLOYED_SCRIPT_ID/exec"
 
 SHEET_HEADERS = [
     "id", "site", "dg", "desc", "status", "docket", "assigned_eng",
@@ -46,52 +26,48 @@ SHEET_HEADERS = [
 
 def load_all_faults():
     try:
-        ws = get_worksheet()
-        all_values = ws.get_all_values()
-        if not all_values or len(all_values) <= 1:
-            return []
-        data_rows = []
-        for row in all_values[1:]:
-            padded = row + [""] * (18 - len(row))
-            data_rows.append([str(c) for c in padded[:18]])
-        return data_rows
+        res = requests.get(SHEET_API_URL, timeout=12)
+        records = res.json()
+        rows = []
+        for r in records:
+            rows.append([
+                str(r.get("id", "")),
+                str(r.get("site", "")),
+                str(r.get("dg", "")),
+                str(r.get("desc", "")),
+                str(r.get("status", "")),
+                str(r.get("docket", "")),
+                str(r.get("assigned_eng", "")),
+                str(r.get("logged_by", "")),
+                str(r.get("mobile", "")),
+                str(r.get("logged_by_selfie", "")),
+                str(r.get("logged_by_loc", "")),
+                str(r.get("action_by_selfie", "")),
+                str(r.get("action_by_loc", "")),
+                str(r.get("rectification", "")),
+                str(r.get("fault_photo", "")),
+                str(r.get("rect_photo", "")),
+                str(r.get("created_at", "")),
+                str(r.get("closed_at", ""))
+            ])
+        return rows
     except Exception as e:
-        st.error(f"Google Sheet পঢ়িবলৈ যাওঁতে সমস্যা হৈছে: {e}")
         return []
 
 def add_fault_to_sheet(row_data):
     try:
-        ws = get_worksheet()
-        existing = ws.get_all_values()
-        if not existing:
-            ws.append_row(SHEET_HEADERS)
-        ws.append_row(row_data)
+        res = requests.post(SHEET_API_URL, json={"action": "append", "row": row_data}, timeout=12)
         return True
     except Exception as e:
-        st.error(f"Google Sheet-ত ডাটা লিখোঁতে বাধা পাইছে: {e}")
+        st.error(f"Google Sheet-ত ডাটা লিখোঁতে সমস্যা হৈছে: {e}")
         return False
 
 def update_fault_in_sheet(ticket_id, updates_dict):
     try:
-        ws = get_worksheet()
-        all_vals = ws.get_all_values()
-        if not all_vals:
-            return False
-        headers = all_vals[0]
-        id_idx = headers.index("id") if "id" in headers else 0
-        target_row = None
-        for i, r in enumerate(all_vals[1:], start=2):
-            if len(r) > id_idx and str(r[id_idx]) == str(ticket_id):
-                target_row = i
-                break
-        if target_row:
-            for k, val in updates_dict.items():
-                if k in headers:
-                    col_idx = headers.index(k) + 1
-                    ws.update_cell(target_row, col_idx, str(val))
-            return True
+        res = requests.post(SHEET_API_URL, json={"action": "update", "id": ticket_id, "updates": updates_dict}, timeout=12)
+        return True
     except Exception as e:
-        st.error(f"Sheet আপডেট কৰোঁতে এৰৰ আহিছে: {e}")
+        st.error(f"Sheet আপডেট কৰোঁতে সমস্যা হৈছে: {e}")
         return False
 
 # ----------------- IST & TRT TIME HELPERS -----------------
@@ -310,6 +286,51 @@ if not st.session_state.logged_in:
     k3.metric("Under Rectification", pub_in_prog)
     k4.metric("Total Closed", pub_closed)
 
+    # Date-wise & JC-wise Public Analytics Table
+    analytics_rows = []
+    for r in public_rows:
+        t_id, t_site, t_status = r[0], r[1], r[4]
+        t_created, t_closed = r[16], r[17]
+
+        t_jc = "Unknown"
+        for jc_opt in JC_LIST:
+            if f"[{jc_opt}]" in t_site:
+                t_jc = jc_opt
+                break
+
+        analytics_rows.append({
+            "Ticket ID": t_id,
+            "JC": t_jc,
+            "Log Date": t_created.split(" ")[0] if t_created else "N/A",
+            "Close Date": t_closed.split(" ")[0] if t_closed else "N/A",
+            "Status": t_status
+        })
+
+    if analytics_rows:
+        df_all = pd.DataFrame(analytics_rows)
+        dates_list = sorted(list(set(df_all["Log Date"].unique()) - {"N/A"}), reverse=True)
+
+        summary_records = []
+        for d in dates_list:
+            d_df = df_all[df_all["Log Date"] == d]
+            for jc in JC_LIST:
+                jc_df = d_df[d_df["JC"] == jc]
+                t_log = len(jc_df)
+                if t_log > 0:
+                    summary_records.append({
+                        "Date": d,
+                        "Job Centre (JC)": jc,
+                        "Log Date Total": t_log,
+                        "Approved": len(jc_df[~jc_df["Status"].isin(["PENDING_SM", "REJECTED"])]),
+                        "Pending SM": len(jc_df[jc_df["Status"] == "PENDING_SM"]),
+                        "Rejected": len(jc_df[jc_df["Status"] == "REJECTED"]),
+                        "Closed on Date": len(df_all[(df_all["Close Date"] == d) & (df_all["JC"] == jc) & (df_all["Status"] == "CLOSED")])
+                    })
+
+        if summary_records:
+            st.markdown("##### 📈 Date-wise & JC-wise Breakdown")
+            st.dataframe(pd.DataFrame(summary_records), use_container_width=True)
+
 else:
     current_username = st.session_state.username
     user = st.session_state.user_info
@@ -460,18 +481,56 @@ else:
         sm_filter_list = ["All Managers", "Central Supervisor (All JC)", "Ajay Sharma (SM - Shillong)", "Rakesh Ahmed (SM - Tura)", "Saharul (SM - Jowai)"]
         sm_filter = st.selectbox("👤 Filter by Responsible SM:", sm_filter_list)
 
+    # ----------------- 30 DAYS RETENTION & USER-SPECIFIC TICKET FILTER -----------------
+    now_ist_dt = get_ist_now().replace(tzinfo=None)
+    retention_limit_days = 30
+
     filtered_rows = []
     for r in all_rows:
+        t_id = r[0]
         t_site = r[1]
+        t_status = r[4]
+        t_eng = r[6]
+        t_logged_by = r[7]
         t_created = r[16]
         t_closed = r[17]
 
+        # 1. Closed ticket 30 days retention logic
+        if t_status == "CLOSED" and t_closed:
+            try:
+                clean_closed = str(t_closed).split(".")[0]
+                closed_dt = datetime.strptime(clean_closed, "%Y-%m-%d %H:%M:%S")
+                days_since_closed = (now_ist_dt - closed_dt).days
+                if days_since_closed > retention_limit_days:
+                    continue
+            except Exception:
+                pass
+
+        # 2. Identify Job Centre
         t_jc = "Unknown"
         for jc_opt in JC_LIST:
             if f"[{jc_opt}]" in t_site:
                 t_jc = jc_opt
                 break
 
+        # 3. User-Specific Access Control (Login-ৰ পিছত কেৱল নিজৰ অপেন টিকট ফিল্টাৰ)
+        user_match = False
+        if role == "Utility Technician":
+            user_match = (t_logged_by == current_username) and (t_status != "CLOSED")
+        elif role == "Service Engineer":
+            user_match = (t_eng == current_username) and (t_status != "CLOSED")
+        elif role == "Service Manager":
+            mgr_jc = user.get("jc", "")
+            user_match = (mgr_jc == "All") or (t_jc == mgr_jc)
+        elif role == "Docket Team":
+            user_match = (t_status in ["PENDING_DOCKET", "ASSIGNED_ENG"])
+        else:
+            user_match = True
+
+        if not user_match:
+            continue
+
+        # 4. Standard UI filters (TRT, JC, SM dropdown)
         trt_str, trt_cat, trt_hours = calculate_trt(t_created, t_closed)
 
         trt_match = True
@@ -496,9 +555,9 @@ else:
         if trt_match and jc_match and sm_match:
             filtered_rows.append((r, t_jc, trt_str, trt_cat))
 
-    # ----------------- 🌟 MASTER TICKETS TABLE (ALL TKT EKELOGE) -----------------
+    # ----------------- MASTER TICKETS TABLE (ALL TKT EKELOGE) -----------------
     st.markdown("### 📋 All Tickets Master Table (একেদমে সকলো টিকট একেলগে)")
-    st.caption(f"Showing **{len(filtered_rows)}** matching tickets out of {total_count}")
+    st.caption(f"Showing **{len(filtered_rows)}** matching tickets for your access")
 
     if filtered_rows:
         table_data = []
@@ -508,7 +567,6 @@ else:
              t_mobile, t_l_selfie, t_l_loc, t_act_selfie, t_act_loc, t_rect, 
              t_fphoto, t_rphoto, t_created_at, t_closed_at) = r
 
-            # Get engineer & technician names
             eng_name = USERS.get(t_eng, {}).get("name", t_eng) if t_eng else "Not Assigned"
             tech_name = USERS.get(t_logged_by, {}).get("name", t_logged_by)
 
@@ -529,7 +587,6 @@ else:
         master_df = pd.DataFrame(table_data)
         st.dataframe(master_df, use_container_width=True, hide_index=True)
 
-        # Excel Download Button
         excel_buffer = io.BytesIO()
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             master_df.to_excel(writer, index=False, sheet_name="All_Tickets")
@@ -541,7 +598,7 @@ else:
             use_container_width=True
         )
     else:
-        st.info("No tickets found matching the selected filters.")
+        st.info("No tickets found matching your role or the selected filters.")
 
     # ----------------- DATE-WISE & JC-WISE ANALYTICS TABLE -----------------
     st.write("---")

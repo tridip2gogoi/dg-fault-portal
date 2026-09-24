@@ -4,8 +4,8 @@ import requests
 import pytz
 import pandas as pd
 import io
-import re
-from datetime import datetime, timedelta
+import sqlite3
+from datetime import datetime
 from streamlit_js_eval import get_geolocation
 
 st.set_page_config(page_title="DG Fault Portal", layout="wide")
@@ -13,61 +13,77 @@ st.set_page_config(page_title="DG Fault Portal", layout="wide")
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# ----------------- GOOGLE APPS SCRIPT WEB APP CONNECTION -----------------
-# তলত আপোনাৰ Google Sheet Apps Script Deploy কৰি পোৱা Web App URL টো বহুৱাওক:
-SHEET_API_URL = "https://script.google.com/macros/s/AKfycbxYOUR_DEPLOYED_SCRIPT_ID/exec"
+# ----------------- SQLITE LOCAL DATABASE SETUP -----------------
+DB_FILE = "dg_faults.db"
 
-SHEET_HEADERS = [
-    "id", "site", "dg", "desc", "status", "docket", "assigned_eng",
-    "logged_by", "mobile", "logged_by_selfie", "logged_by_loc", "action_by_selfie",
-    "action_by_loc", "rectification", "fault_photo", "rect_photo",
-    "created_at", "closed_at"
-]
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS faults (
+            id TEXT PRIMARY KEY,
+            site TEXT,
+            dg TEXT,
+            desc TEXT,
+            status TEXT,
+            docket TEXT,
+            assigned_eng TEXT,
+            logged_by TEXT,
+            mobile TEXT,
+            logged_by_selfie TEXT,
+            logged_by_loc TEXT,
+            action_by_selfie TEXT,
+            action_by_loc TEXT,
+            rectification TEXT,
+            fault_photo TEXT,
+            rect_photo TEXT,
+            created_at TEXT,
+            closed_at TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()
 
 def load_all_faults():
     try:
-        res = requests.get(SHEET_API_URL, timeout=12)
-        records = res.json()
-        rows = []
-        for r in records:
-            rows.append([
-                str(r.get("id", "")),
-                str(r.get("site", "")),
-                str(r.get("dg", "")),
-                str(r.get("desc", "")),
-                str(r.get("status", "")),
-                str(r.get("docket", "")),
-                str(r.get("assigned_eng", "")),
-                str(r.get("logged_by", "")),
-                str(r.get("mobile", "")),
-                str(r.get("logged_by_selfie", "")),
-                str(r.get("logged_by_loc", "")),
-                str(r.get("action_by_selfie", "")),
-                str(r.get("action_by_loc", "")),
-                str(r.get("rectification", "")),
-                str(r.get("fault_photo", "")),
-                str(r.get("rect_photo", "")),
-                str(r.get("created_at", "")),
-                str(r.get("closed_at", ""))
-            ])
-        return rows
-    except Exception:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("SELECT * FROM faults ORDER BY created_at ASC")
+        rows = c.fetchall()
+        conn.close()
+        return [[str(item) if item is not None else "" for item in r] for r in rows]
+    except Exception as e:
+        st.error(f"ডাটাবেছ পঢ়োঁতে সমস্যা হৈছে: {e}")
         return []
 
 def add_fault_to_sheet(row_data):
     try:
-        res = requests.post(SHEET_API_URL, json={"action": "append", "row": row_data}, timeout=12)
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO faults VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ''', tuple(row_data))
+        conn.commit()
+        conn.close()
         return True
     except Exception as e:
-        st.error(f"Google Sheet-ত ডাটা লিখোঁতে সমস্যা হৈছে: {e}")
+        st.error(f"ডাটাবেছত সংৰক্ষণ কৰোঁতে সমস্যা হৈছে: {e}")
         return False
 
 def update_fault_in_sheet(ticket_id, updates_dict):
     try:
-        res = requests.post(SHEET_API_URL, json={"action": "update", "id": ticket_id, "updates": updates_dict}, timeout=12)
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        for k, v in updates_dict.items():
+            query = f"UPDATE faults SET {k} = ? WHERE id = ?"
+            c.execute(query, (str(v), str(ticket_id)))
+        conn.commit()
+        conn.close()
         return True
     except Exception as e:
-        st.error(f"Sheet আপডেট কৰোঁতে সমস্যা হৈছে: {e}")
+        st.error(f"ডাটাবেছ আপডেট কৰোঁতে সমস্যা হৈছে: {e}")
         return False
 
 # ----------------- IST & TRT TIME HELPERS -----------------
@@ -337,7 +353,7 @@ if not st.session_state.logged_in:
                     })
 
         if summary_records:
-            st.markdown("##### 📈 Date-wise & JC-wise")
+            st.markdown("##### 📈 Date-wise & JC-wise Breakdown")
             st.dataframe(pd.DataFrame(summary_records), use_container_width=True)
 
 else:
@@ -455,7 +471,7 @@ else:
                             f"🕒 *Date & Time (IST):* {format_dt(now_time)}"
                         )
                         send_telegram_alert(tg_msg)
-                        st.success(f"Fault ticket {new_id} saved to Google Sheets! Telegram notification sent.")
+                        st.success(f"Fault ticket {new_id} saved locally! Telegram notification sent.")
                         st.rerun()
 
         st.divider()
@@ -514,7 +530,7 @@ else:
                 closed_dt = datetime.strptime(clean_closed, "%Y-%m-%d %H:%M:%S")
                 days_since_closed = (now_ist_dt - closed_dt).days
                 if days_since_closed > retention_limit_days:
-                    continue  # ৩০ দিন পাৰ হ'লে কোনেও নেদেখিব
+                    continue
             except Exception:
                 continue
 
@@ -525,28 +541,19 @@ else:
                 t_jc = jc_opt
                 break
 
-        # ৩. ভূমিকা অনুসৰি প্ৰৱেশাধিকাৰ (Role-based Access Filtering):
+        # ৩. ভূমিকা অনুসৰি প্ৰৱেশাধিকাৰ:
         user_match = False
         if role == "Utility Technician":
-            # টেকনিচিয়ানে কেৱল তেওঁ নিজে সৃষ্টি কৰা টিকট দেখিব (Open + 30 দিনৰ ভিতৰৰ Closed)
             user_match = (t_logged_by == current_username)
-
         elif role == "Service Engineer":
-            # ইঞ্জিনিয়াৰে কেৱল তেওঁলৈ আৱন্টন হোৱা টিকট দেখিব (Open + 30 দিনৰ ভিতৰৰ Closed)
             user_match = (t_eng == current_username)
-
         elif role == "UT Supervisor":
-            # UT Supervisor-এ নিজৰ JC-ৰ টিকট দেখিব (Open + 30 দিনৰ ভিতৰৰ Closed)
             sup_jc = user.get("jc", "")
             user_match = (sup_jc == "All") or (t_jc == sup_jc)
-
         elif role == "Service Manager":
-            # Service Manager-এ নিজৰ JC-ৰ টিকট দেখিব (Admin হ'লে সকলো JC)
             mgr_jc = user.get("jc", "")
             user_match = (mgr_jc == "All") or (t_jc == mgr_jc)
-
         elif role == "Docket Team":
-            # Docket Deske ডকেট দিবলগীয়া আৰু সক্ৰিয় ডকেট টিকট দেখিব
             user_match = (t_status in ["PENDING_DOCKET", "ASSIGNED_ENG", "PENDING_UT_VERIFY", "PENDING_UT_SUP_VERIFY"])
         else:
             user_match = True
@@ -554,7 +561,7 @@ else:
         if not user_match:
             continue
 
-        # ৪. UI ড্ৰপডাউন ফিল্টাৰ (TRT, JC, SM):
+        # ৪. UI ড্ৰপডাউন ফিল্টাৰ:
         trt_str, trt_cat, trt_hours = calculate_trt(t_created, t_closed)
 
         trt_match = True
@@ -580,7 +587,7 @@ else:
             filtered_rows.append((r, t_jc, trt_str, trt_cat))
 
     # ----------------- MASTER TICKETS TABLE (ALL TKT EKELOGE) -----------------
-    st.markdown("### 📋 All Tickets Master Table")
+    st.markdown("### 📋 All Tickets Master Table (একেদমে সকলো টিকট একেলগে)")
     st.caption(f"Showing **{len(filtered_rows)}** matching tickets for your access")
 
     if filtered_rows:
@@ -626,7 +633,7 @@ else:
 
     # ----------------- DATE-WISE & JC-WISE ANALYTICS TABLE -----------------
     st.write("---")
-    st.markdown("### 📈 Date-wise & JC-wise")
+    st.markdown("### 📈 Date-wise & JC-wise Breakdown")
     st.caption("Owner নিৰীক্ষণৰ বাবে: Log Date-wise Total ➔ Approved Total ➔ Pending Total ➔ Reject Total ➔ Closed Date-wise Total")
 
     analytics_rows = []

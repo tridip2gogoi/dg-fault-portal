@@ -337,7 +337,7 @@ if not st.session_state.logged_in:
                     })
 
         if summary_records:
-            st.markdown("##### 📈 Date-wise & JC-wise Breakdown")
+            st.markdown("##### 📈 Date-wise & JC-wise")
             st.dataframe(pd.DataFrame(summary_records), use_container_width=True)
 
 else:
@@ -626,7 +626,7 @@ else:
 
     # ----------------- DATE-WISE & JC-WISE ANALYTICS TABLE -----------------
     st.write("---")
-    st.markdown("### 📈 Date-wise & JC-wise Breakdown")
+    st.markdown("### 📈 Date-wise & JC-wise")
     st.caption("Owner নিৰীক্ষণৰ বাবে: Log Date-wise Total ➔ Approved Total ➔ Pending Total ➔ Reject Total ➔ Closed Date-wise Total")
 
     analytics_rows = []

@@ -4,6 +4,7 @@ import requests
 import pytz
 import pandas as pd
 import io
+import re
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
@@ -36,7 +37,7 @@ def get_worksheet():
 
 SHEET_HEADERS = [
     "id", "site", "dg", "desc", "status", "docket", "assigned_eng",
-    "logged_by", "logged_by_selfie", "logged_by_loc", "action_by_selfie",
+    "logged_by", "mobile", "logged_by_selfie", "logged_by_loc", "action_by_selfie",
     "action_by_loc", "rectification", "fault_photo", "rect_photo",
     "created_at", "closed_at"
 ]
@@ -55,6 +56,7 @@ def load_all_faults():
             str(r.get("docket", "")),
             str(r.get("assigned_eng", "")),
             str(r.get("logged_by", "")),
+            str(r.get("mobile", "")),
             str(r.get("logged_by_selfie", "")),
             str(r.get("logged_by_loc", "")),
             str(r.get("action_by_selfie", "")),
@@ -322,7 +324,9 @@ else:
             with c_jc:
                 selected_jc = st.selectbox("Job Centre (JC)", JC_LIST)
             
-            c_dg1, c_dg2 = st.columns(2)
+            c_mob, c_dg1, c_dg2 = st.columns([1.5, 1, 1])
+            with c_mob:
+                contact_mobile = st.text_input("Contact Mobile Number (10 digits)", max_chars=10, help="Enter active 10-digit mobile number")
             with c_dg1:
                 dg_make = st.selectbox("DG Make", ["Kirloskar", "Mahindra", "Eicher"])
             with c_dg2:
@@ -345,53 +349,58 @@ else:
             fault_imgs = st.file_uploader("Upload Fault Photos (Multiple allowed)", type=["jpg", "png", "jpeg"], accept_multiple_files=True)
             submit = st.form_submit_button("Submit Fault Request")
 
-            if submit and site and desc:
-                if selected_support_person == "Other (Mention name below)":
-                    support_final_name = custom_person_name.strip() if custom_person_name.strip() else "Other Person"
+            if submit:
+                clean_mobile = contact_mobile.strip()
+                if not (site and desc and clean_mobile):
+                    st.error("Site ID, Mobile Number, and Fault Remarks are strictly required!")
+                elif not (clean_mobile.isdigit() and len(clean_mobile) == 10):
+                    st.error("Please enter a valid 10-digit mobile number without spaces or country code.")
                 else:
-                    support_final_name = selected_support_person
+                    if selected_support_person == "Other (Mention name below)":
+                        support_final_name = custom_person_name.strip() if custom_person_name.strip() else "Other Person"
+                    else:
+                        support_final_name = selected_support_person
 
-                all_current_rows = load_all_faults()
-                new_id = f"TKT-{len(all_current_rows) + 101}"
-                photo_paths = save_multiple_images(fault_imgs, "fault", new_id)
+                    all_current_rows = load_all_faults()
+                    new_id = f"TKT-{len(all_current_rows) + 101}"
+                    photo_paths = save_multiple_images(fault_imgs, "fault", new_id)
 
-                site_with_jc = f"{site} [{selected_jc}]"
-                dg_combined = f"{dg_make} ({dg_rating})"
-                now_time = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
+                    site_with_jc = f"{site} [{selected_jc}]"
+                    dg_combined = f"{dg_make} ({dg_rating})"
+                    now_time = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
 
-                full_desc = (
-                    f"{desc}\n\n"
-                    f"📞 Online Support: {support_final_name}\n"
-                    f"💡 Support Guidance: {online_sup_remarks if online_sup_remarks else 'N/A'}"
-                )
+                    full_desc = (
+                        f"{desc}\n\n"
+                        f"📞 Online Support: {support_final_name}\n"
+                        f"💡 Support Guidance: {online_sup_remarks if online_sup_remarks else 'N/A'}"
+                    )
 
-                row_payload = [
-                    new_id, site_with_jc, dg_combined, full_desc, 'PENDING_SM', '', '', 
-                    current_username, user_selfie, user_loc, 
-                    '', '', '', photo_paths, '', now_time, ''
-                ]
-                add_fault_to_sheet(row_payload)
+                    row_payload = [
+                        new_id, site_with_jc, dg_combined, full_desc, 'PENDING_SM', '', '', 
+                        current_username, clean_mobile, user_selfie, user_loc, 
+                        '', '', '', photo_paths, '', now_time, ''
+                    ]
+                    add_fault_to_sheet(row_payload)
 
-                photo_count = len(fault_imgs) if fault_imgs else 0
-                tg_msg = (
-                    f"🚨 *New DG Fault Logged!*\n\n"
-                    f"📌 *Ticket ID:* `{new_id}`\n"
-                    f"🏢 *Site ID:* {site}\n"
-                    f"📍 *JC:* {selected_jc}\n"
-                    f"🏭 *DG:* {dg_make} ({dg_rating})\n"
-                    f"📞 *Online Support:* {support_final_name}\n"
-                    f"💡 *Support Guidance:* {online_sup_remarks if online_sup_remarks else 'N/A'}\n"
-                    f"📝 *Fault Remarks:* {desc}\n"
-                    f"📷 *Photos Uploaded:* {photo_count}\n"
-                    f"👤 *Logged by:* {user['name']}\n"
-                    f"🕒 *Date & Time (IST):* {format_dt(now_time)}"
-                )
-                send_telegram_alert(tg_msg)
+                    photo_count = len(fault_imgs) if fault_imgs else 0
+                    tg_msg = (
+                        f"🚨 *New DG Fault Logged!*\n\n"
+                        f"📌 *Ticket ID:* `{new_id}`\n"
+                        f"🏢 *Site ID:* {site}\n"
+                        f"📍 *JC:* {selected_jc}\n"
+                        f"🏭 *DG:* {dg_make} ({dg_rating})\n"
+                        f"📱 *Contact No:* `{clean_mobile}`\n"
+                        f"📞 *Online Support:* {support_final_name}\n"
+                        f"💡 *Support Guidance:* {online_sup_remarks if online_sup_remarks else 'N/A'}\n"
+                        f"📝 *Fault Remarks:* {desc}\n"
+                        f"📷 *Photos Uploaded:* {photo_count}\n"
+                        f"👤 *Logged by:* {user['name']}\n"
+                        f"🕒 *Date & Time (IST):* {format_dt(now_time)}"
+                    )
+                    send_telegram_alert(tg_msg)
 
-                st.success(f"Fault ticket {new_id} saved to Google Sheets! Telegram notification sent.")
-                st.rerun()
-            elif submit:
-                st.error("Site ID and Fault Remarks are required!")
+                    st.success(f"Fault ticket {new_id} saved to Google Sheets! Telegram notification sent.")
+                    st.rerun()
 
         st.divider()
 
@@ -400,7 +409,6 @@ else:
 
     all_rows = load_all_faults()
 
-    # High-level Metrics Cards
     total_count = len(all_rows)
     pending_sm_count = sum(1 for r in all_rows if r[4] == 'PENDING_SM')
     in_progress_count = sum(1 for r in all_rows if r[4] in ['PENDING_DOCKET', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY'])
@@ -412,7 +420,7 @@ else:
     kpi3.metric("Under Rectification", in_progress_count)
     kpi4.metric("Total Closed", closed_count)
 
-    # ----------------- DATE-WISE & JC-WISE ANALYTICS TABLE (ORDERED) -----------------
+    # ----------------- DATE-WISE & JC-WISE ANALYTICS TABLE -----------------
     st.markdown("### 📈 Date-wise & JC-wise Breakdown")
     st.caption("Owner নিৰীক্ষণৰ বাবে: Log Date-wise Total ➔ Approved Total ➔ Pending Total ➔ Reject Total ➔ Closed Date-wise Total")
 
@@ -421,8 +429,8 @@ else:
         t_id = r[0]
         t_site = r[1]
         t_status = r[4]
-        t_created = r[15]
-        t_closed = r[16]
+        t_created = r[16]
+        t_closed = r[17]
 
         t_jc = "Unknown"
         for jc_opt in JC_LIST:
@@ -485,7 +493,6 @@ else:
 
     st.write("---")
 
-    # Triple Filters: TRT-Wise, JC-Wise, and SM-Wise
     f_c1, f_c2, f_c3 = st.columns(3)
     with f_c1:
         trt_filter = st.selectbox(
@@ -498,12 +505,11 @@ else:
         sm_filter_list = ["All Managers", "Central Supervisor (All JC)", "Ajay Sharma (SM - Shillong)", "Rakesh Ahmed (SM - Tura)", "Saharul (SM - Jowai)"]
         sm_filter = st.selectbox("👤 Filter by Responsible SM:", sm_filter_list)
 
-    # Filter Rows Logic
     filtered_rows = []
     for r in all_rows:
         t_site = r[1]
-        t_created = r[15]
-        t_closed = r[16]
+        t_created = r[16]
+        t_closed = r[17]
 
         t_jc = "Unknown"
         for jc_opt in JC_LIST:
@@ -543,7 +549,7 @@ else:
     for item in reversed(filtered_rows):
         r, ticket_jc, trt_str, trt_cat = item
         (t_id, t_site, t_dg, t_desc, t_status, t_docket, t_eng, t_logged_by, 
-         t_l_selfie, t_l_loc, t_act_selfie, t_act_loc, t_rect, t_fphoto, t_rphoto, 
+         t_mobile, t_l_selfie, t_l_loc, t_act_selfie, t_act_loc, t_rect, t_fphoto, t_rphoto, 
          t_created_at, t_closed_at) = r
 
         created_str = format_dt(t_created_at)
@@ -574,7 +580,8 @@ else:
             c_info1, c_info2 = st.columns([3, 1])
             with c_info1:
                 creator_name = USERS.get(t_logged_by, {}).get('name', t_logged_by)
-                st.caption(f"Logged by: **{creator_name}** | JC: **{ticket_jc}**")
+                mob_display = f" | 📱 Contact: **{t_mobile}**" if t_mobile else ""
+                st.caption(f"Logged by: **{creator_name}** ({t_logged_by}){mob_display} | JC: **{ticket_jc}**")
                 if t_l_loc:
                     st.markdown(f"📍 [View Creator GPS Location]({t_l_loc})")
             with c_info2:

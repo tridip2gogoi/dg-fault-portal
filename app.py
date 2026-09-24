@@ -24,8 +24,14 @@ SCOPES = [
 @st.cache_resource
 def get_gspread_client():
     creds_dict = dict(st.secrets["gcp_service_account"])
-    if "\\n" in creds_dict["private_key"]:
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+    
+    # Private Key-ত থকা নিউ-লাইন আৰু কোটেশ্বনৰ সমস্যা সমাধান
+    raw_key = creds_dict["private_key"]
+    if "\\n" in raw_key:
+        raw_key = raw_key.replace("\\n", "\n")
+    raw_key = raw_key.strip().strip("'").strip('"')
+    creds_dict["private_key"] = raw_key
+
     credentials = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
     client = gspread.authorize(credentials)
     return client

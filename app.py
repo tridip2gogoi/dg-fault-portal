@@ -44,45 +44,52 @@ SHEET_HEADERS = [
     "created_at", "closed_at"
 ]
 
+import requests
+
+# ইয়াত পদক্ষেপ ১-ত পোৱা Web app URL টো বহুৱাওক
+SHEET_API_URL = "আপোনাৰ_Web_App_URL_টো_ইয়াত_পেষ্ট_কৰক"
+
 def load_all_faults():
-    ws = get_worksheet()
-    records = ws.get_all_records()
-    rows = []
-    for r in records:
-        rows.append([
-            str(r.get("id", "")),
-            str(r.get("site", "")),
-            str(r.get("dg", "")),
-            str(r.get("desc", "")),
-            str(r.get("status", "")),
-            str(r.get("docket", "")),
-            str(r.get("assigned_eng", "")),
-            str(r.get("logged_by", "")),
-            str(r.get("mobile", "")),
-            str(r.get("logged_by_selfie", "")),
-            str(r.get("logged_by_loc", "")),
-            str(r.get("action_by_selfie", "")),
-            str(r.get("action_by_loc", "")),
-            str(r.get("rectification", "")),
-            str(r.get("fault_photo", "")),
-            str(r.get("rect_photo", "")),
-            str(r.get("created_at", "")),
-            str(r.get("closed_at", ""))
-        ])
-    return rows
+    try:
+        res = requests.get(SHEET_API_URL, timeout=10)
+        records = res.json()
+        rows = []
+        for r in records:
+            rows.append([
+                str(r.get("id", "")),
+                str(r.get("site", "")),
+                str(r.get("dg", "")),
+                str(r.get("desc", "")),
+                str(r.get("status", "")),
+                str(r.get("docket", "")),
+                str(r.get("assigned_eng", "")),
+                str(r.get("logged_by", "")),
+                str(r.get("mobile", "")),
+                str(r.get("logged_by_selfie", "")),
+                str(r.get("logged_by_loc", "")),
+                str(r.get("action_by_selfie", "")),
+                str(r.get("action_by_loc", "")),
+                str(r.get("rectification", "")),
+                str(r.get("fault_photo", "")),
+                str(r.get("rect_photo", "")),
+                str(r.get("created_at", "")),
+                str(r.get("closed_at", ""))
+            ])
+        return rows
+    except Exception:
+        return []
 
 def add_fault_to_sheet(row_data):
-    ws = get_worksheet()
-    ws.append_row(row_data)
+    try:
+        requests.post(SHEET_API_URL, json={"action": "append", "row": row_data}, timeout=10)
+    except Exception:
+        pass
 
 def update_fault_in_sheet(ticket_id, updates_dict):
-    ws = get_worksheet()
-    records = ws.get_all_records()
-    row_idx = None
-    for idx, r in enumerate(records):
-        if str(r.get("id")) == str(ticket_id):
-            row_idx = idx + 2
-            break
+    try:
+        requests.post(SHEET_API_URL, json={"action": "update", "id": ticket_id, "updates": updates_dict}, timeout=10)
+    except Exception:
+        pass
     if row_idx:
         for col_name, val in updates_dict.items():
             if col_name in SHEET_HEADERS:

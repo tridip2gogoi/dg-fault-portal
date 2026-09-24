@@ -55,7 +55,7 @@ def load_all_faults():
         conn.close()
         return [[str(item) if item is not None else "" for item in r] for r in rows]
     except Exception as e:
-        st.error(f"ডাটাবেছ পঢ়োঁতে সমস্যা হৈছে: {e}")
+        st.error(f"Error loading database: {e}")
         return []
 
 def add_fault_to_sheet(row_data):
@@ -69,7 +69,7 @@ def add_fault_to_sheet(row_data):
         conn.close()
         return True
     except Exception as e:
-        st.error(f"ডাটাবেছত সংৰক্ষণ কৰোঁতে সমস্যা হৈছে: {e}")
+        st.error(f"Error saving to database: {e}")
         return False
 
 def update_fault_in_sheet(ticket_id, updates_dict):
@@ -83,7 +83,7 @@ def update_fault_in_sheet(ticket_id, updates_dict):
         conn.close()
         return True
     except Exception as e:
-        st.error(f"ডাটাবেছ আপডেট কৰোঁতে সমস্যা হৈছে: {e}")
+        st.error(f"Error updating database: {e}")
         return False
 
 # ----------------- IST & TRT TIME HELPERS -----------------
@@ -306,10 +306,10 @@ if not st.session_state.logged_in:
     pub_closed = sum(1 for r in public_rows if r[4] == 'CLOSED')
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("মুঠ টিকট (Total Tickets)", pub_total)
-    k2.metric("মেনেজাৰ অনুমোদনৰ অপেক্ষাত (Pending SM)", pub_pending_sm)
-    k3.metric("মেৰামতিৰ কাম চলি থকা (Under Rectification)", pub_in_prog)
-    k4.metric("মুঠ বন্ধ হোৱা (Total Closed)", pub_closed)
+    k1.metric("Total Tickets", pub_total)
+    k2.metric("Pending SM Approval", pub_pending_sm)
+    k3.metric("Under Rectification", pub_in_prog)
+    k4.metric("Total Closed", pub_closed)
 
 else:
     current_username = st.session_state.username
@@ -432,9 +432,9 @@ else:
         st.divider()
 
     # =========================================================================
-    # 🌟 ১. TOTAL DASHBOARD (সমগ্ৰ প্ৰকল্পৰ লাইভ অৱলোকন - সকলোৱে দেখিব)
+    # 1. TOTAL DASHBOARD (Project Overview - Visible to All)
     # =========================================================================
-    st.subheader("📊 Live DG Fault Tracker & Project Overview (মুঠ ডেশ্ববৰ্ড)")
+    st.subheader("📊 Live DG Fault Tracker & Project Overview (Total Dashboard)")
 
     all_rows = load_all_faults()
 
@@ -444,12 +444,12 @@ else:
     closed_count = sum(1 for r in all_rows if str(r[4]).strip() == 'CLOSED')
 
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    kpi1.metric("মুঠ টিকট (Total Tickets)", total_count)
-    kpi2.metric("মেনেজাৰ অনুমোদনৰ অপেক্ষাত (Pending SM)", pending_sm_count)
-    kpi3.metric("মেৰামতিৰ কাম চলি থকা (Under Rectification)", in_progress_count)
-    kpi4.metric("মুঠ বন্ধ হোৱা (Total Closed)", closed_count)
+    kpi1.metric("Total Tickets", total_count)
+    kpi2.metric("Pending SM Approval", pending_sm_count)
+    kpi3.metric("Under Rectification", in_progress_count)
+    kpi4.metric("Total Closed", closed_count)
 
-    # TRT Aging আৰু Date-wise প্ৰকল্প সাৰাংশ গণনা
+    # TRT Aging & Date-wise Project Summary Calculation
     analytics_rows = []
     normal_trt_count = 0
     warning_trt_count = 0
@@ -484,11 +484,11 @@ else:
 
     # Aging Overview Bar
     st.write("---")
-    st.markdown("##### ⏳ সামগ্ৰিক TRT Aging সাৰাংশ (Overall Aging Summary)")
+    st.markdown("##### ⏳ Overall TRT Aging Summary (All Tickets)")
     ag1, ag2, ag3 = st.columns(3)
-    ag1.metric("🟢 স্বাভাৱিক (Normal < 24h)", normal_trt_count)
-    ag2.metric("🟡 সতৰ্কতা (Warning 24-48h)", warning_trt_count)
-    ag3.metric("🔴 জৰুৰী (Critical > 48h)", critical_trt_count)
+    ag1.metric("🟢 Normal (< 24h)", normal_trt_count)
+    ag2.metric("🟡 Warning (24-48h)", warning_trt_count)
+    ag3.metric("🔴 Critical (> 48h)", critical_trt_count)
 
     # Date-wise & JC-wise Breakdown Table
     if analytics_rows:
@@ -503,25 +503,25 @@ else:
                 t_log = len(jc_df)
                 if t_log > 0:
                     summary_records.append({
-                        "তাৰিখ (Date)": d,
+                        "Date": d,
                         "Job Centre (JC)": jc,
-                        "সেই দিনৰ মুঠ লগ": t_log,
-                        "অনুমোদিত (Approved)": len(jc_df[~jc_df["Status"].isin(["PENDING_SM", "REJECTED"])]),
-                        "SM-ৰ অপেক্ষাত": len(jc_df[jc_df["Status"] == "PENDING_SM"]),
-                        "বাতিল (Rejected)": len(jc_df[jc_df["Status"] == "REJECTED"]),
-                        "সেই দিনত বন্ধ হোৱা": len(df_all[(df_all["Close Date"] == d) & (df_all["JC"] == jc) & (df_all["Status"] == "CLOSED")])
+                        "Log Date Total": t_log,
+                        "Approved": len(jc_df[~jc_df["Status"].isin(["PENDING_SM", "REJECTED"])]),
+                        "Pending SM": len(jc_df[jc_df["Status"] == "PENDING_SM"]),
+                        "Rejected": len(jc_df[jc_df["Status"] == "REJECTED"]),
+                        "Closed on Date": len(df_all[(df_all["Close Date"] == d) & (df_all["JC"] == jc) & (df_all["Status"] == "CLOSED")])
                     })
 
         if summary_records:
-            with st.expander("📈 তাৰিখ আৰু JC অনুসৰি প্ৰকল্পৰ বিতং তালিকা চাওক", expanded=False):
+            with st.expander("📈 View Date-wise & JC-wise Project Breakdown Table", expanded=False):
                 st.dataframe(pd.DataFrame(summary_records), use_container_width=True)
 
     st.divider()
 
     # =========================================================================
-    # 🎯 ২. USER'S OWN CASES (কেৱল ইউজাৰৰ নিজৰ কেছ আৰু একশ্বন কাৰ্ড)
+    # 2. USER'S OWN CASES (Actionable Cases & Action Cards)
     # =========================================================================
-    st.subheader(f"📌 মোৰ কাৰ্যক্ষম টিকটসমূহ (My Actionable Cases - {user['name']})")
+    st.subheader(f"📌 My Actionable Cases ({user['name']})")
 
     now_ist_dt = get_ist_now().replace(tzinfo=None)
     retention_limit_days = 30
@@ -537,18 +537,18 @@ else:
         t_created = str(r[16]).strip()
         t_closed = str(r[17]).strip()
 
-        # Job Centre (JC) নিৰ্ধাৰণ
+        # Job Centre (JC) Identification
         t_jc = "Unknown"
         for jc_opt in JC_LIST:
             if f"[{jc_opt}]" in t_site:
                 t_jc = jc_opt
                 break
 
-        # ইউজাৰৰ ভূমিকা অনুসৰি কেৱল নিজৰ কেছ ফিল্টাৰ:
+        # Role-based User Filtering
         is_my_case = False
 
         if role == "Utility Technician":
-            # টেকনিচিয়ান: নিজৰ সৃষ্টি কৰা টিকট (অপেন + ৩০ দিনৰ ভিতৰৰ ক্ল'জড)
+            # Technician: Own created tickets (Open + Closed within 30 days)
             if t_logged_by == current_username:
                 if t_status != "CLOSED":
                     is_my_case = True
@@ -561,12 +561,12 @@ else:
                         pass
 
         elif role == "Service Engineer":
-            # চাৰ্ভিচ ইঞ্জিনিয়াৰ: ONLY OPEN CASES (কেৱল তেওঁলৈ দিয়া অপেন কাম)
+            # Service Engineer: ONLY OPEN CASES assigned to this engineer
             if t_eng == current_username and t_status != "CLOSED":
                 is_my_case = True
 
         elif role == "UT Supervisor":
-            # UT ছুপাৰভাইজাৰ: নিজৰ JC-ৰ টিকট (অপেন + ৩০ দিনৰ ভিতৰৰ ক্ল'জড)
+            # UT Supervisor: Tickets in supervised JC (Open + Closed within 30 days)
             sup_jc = user.get("jc", "")
             if (sup_jc == "All") or (t_jc == sup_jc):
                 if t_status != "CLOSED":
@@ -580,7 +580,7 @@ else:
                         pass
 
         elif role == "Service Manager":
-            # চাৰ্ভিচ মেনেজাৰ: নিজৰ JC-ৰ টিকট (Admin হ'লে সকলো) (অপেন + ৩০ দিনৰ ভিতৰৰ ক্ল'জড)
+            # Service Manager: Tickets in supervised JC (All for central admin) (Open + Closed within 30 days)
             mgr_jc = user.get("jc", "")
             if (mgr_jc == "All") or (t_jc == mgr_jc):
                 if t_status != "CLOSED":
@@ -594,7 +594,7 @@ else:
                         pass
 
         elif role == "Docket Team":
-            # ডকেট ডেস্ক: ডকেট দিবলগীয়া আৰু মেৰামতি চলি থকা টিকট
+            # Docket Desk: Tickets needing assignment or actively in progress
             if t_status in ["PENDING_DOCKET", "ASSIGNED_ENG", "PENDING_UT_VERIFY", "PENDING_UT_SUP_VERIFY"]:
                 is_my_case = True
 
@@ -603,8 +603,8 @@ else:
             my_cases.append((r, t_jc, trt_str, trt_cat))
 
     # ----------------- MY TICKETS MASTER TABLE -----------------
-    st.markdown("### 📋 মোৰ টিকটৰ তালিকা (My Tickets Master Table)")
-    st.caption(f"আপোনাৰ নামত উপলব্ধ সক্ৰিয়/সম্প্ৰতি বন্ধ হোৱা মুঠ **{len(my_cases)}** টা টিকট দেখুওৱা হৈছে")
+    st.markdown("### 📋 My Tickets Master Table")
+    st.caption(f"Showing **{len(my_cases)}** active or recently closed tickets assigned to or created by you")
 
     if my_cases:
         table_data = []
@@ -614,21 +614,21 @@ else:
              t_mobile, t_l_selfie, t_l_loc, t_act_selfie, t_act_loc, t_rect, 
              t_fphoto, t_rphoto, t_created_at, t_closed_at) = r
 
-            eng_name = USERS.get(t_eng, {}).get("name", t_eng) if t_eng else "দিয়া হোৱা নাই"
+            eng_name = USERS.get(t_eng, {}).get("name", t_eng) if t_eng else "Not Assigned"
             tech_name = USERS.get(t_logged_by, {}).get("name", t_logged_by)
 
             table_data.append({
-                "টিকট নং (ID)": t_id,
-                "চাইট আৰু JC": t_site,
-                "DG ৰেটিং": t_dg,
-                "স্থিতি (Status)": t_status,
-                "TRT সময়": trt_str,
-                "TRT শ্ৰেণী": trt_cat,
-                "টেকনিচিয়ান (UT)": f"{tech_name} ({t_mobile})",
-                "ডকেট নং": t_docket if t_docket else "-",
-                "ইঞ্জিনিয়াৰ (SE)": eng_name,
-                "সৃষ্টিৰ তাৰিখ": format_dt(t_created_at),
-                "বন্ধৰ তাৰিখ": format_dt(t_closed_at) if t_closed_at else "-"
+                "Ticket ID": t_id,
+                "Site ID & JC": t_site,
+                "DG Rating": t_dg,
+                "Status": t_status,
+                "TRT Aging": trt_str,
+                "TRT Category": trt_cat,
+                "Logged By (Tech)": f"{tech_name} ({t_mobile})",
+                "Docket No": t_docket if t_docket else "-",
+                "Assigned Engineer": eng_name,
+                "Created At (IST)": format_dt(t_created_at),
+                "Closed At (IST)": format_dt(t_closed_at) if t_closed_at else "-"
             })
 
         master_df = pd.DataFrame(table_data)
@@ -638,16 +638,16 @@ else:
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             master_df.to_excel(writer, index=False, sheet_name="My_Tickets")
         st.download_button(
-            label="📥 মোৰ টিকটৰ এক্সেল ফাইল ডাউনলোড কৰক (Excel Report)",
+            label="📥 Download My Tickets Report (Excel)",
             data=excel_buffer.getvalue(),
             file_name=f"My_Tickets_{get_ist_now().strftime('%Y%m%d_%H%M')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
     else:
-        st.info("আপোনাৰ একাউণ্টৰ বাবে কোনো সক্ৰিয় টিকট পোৱা নগ'ল।")
+        st.info("No active tickets found matching your user account.")
 
-    # ----------------- DETAILED TICKET ACTION CARDS (KEWAL NIJOR CASE) -----------------
+    # ----------------- DETAILED TICKET ACTION CARDS (USER'S CASES ONLY) -----------------
     st.write("---")
     st.subheader("🔍 Ticket Action & Individual Details")
 

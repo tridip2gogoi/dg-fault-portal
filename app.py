@@ -15,7 +15,7 @@ st.set_page_config(page_title="DG Fault Portal", layout="wide")
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# ----------------- GOOGLE SHEETS CONNECTION (RELIABLE) -----------------
+# ----------------- GOOGLE SHEETS CONNECTION -----------------
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
@@ -143,7 +143,7 @@ def send_telegram_alert(message_text):
     except Exception:
         pass
 
-# ----------------- USER ACCOUNTS WITH MOBILE NUMBERS -----------------
+# ----------------- USER ACCOUNTS -----------------
 USERS = {
     "admin": {"password": "admin", "role": "Service Manager", "name": "Central Supervisor (All JC)", "jc": "All", "phone": "9876543210"},
     "tech1": {"password": "123", "role": "Utility Technician", "name": "Anupam Kumer Shing (Tech)", "phone": "9864011111"},
@@ -293,6 +293,23 @@ if not st.session_state.logged_in:
                     st.rerun()
             else:
                 st.error("Invalid Username or Password!")
+
+    # ----------------- PUBLIC LIVE TT SUMMARY ON LOGIN PAGE -----------------
+    st.divider()
+    st.subheader("📊 Live DG Fault Tracker & TT Summary (Overview)")
+
+    public_rows = load_all_faults()
+    pub_total = len(public_rows)
+    pub_pending_sm = sum(1 for r in public_rows if r[4] == 'PENDING_SM')
+    pub_in_prog = sum(1 for r in public_rows if r[4] in ['PENDING_DOCKET', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY'])
+    pub_closed = sum(1 for r in public_rows if r[4] == 'CLOSED')
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Total Tickets", pub_total)
+    k2.metric("Pending SM Approval", pub_pending_sm)
+    k3.metric("Under Rectification", pub_in_prog)
+    k4.metric("Total Closed", pub_closed)
+
 else:
     current_username = st.session_state.username
     user = st.session_state.user_info
@@ -429,79 +446,8 @@ else:
     kpi3.metric("Under Rectification", in_progress_count)
     kpi4.metric("Total Closed", closed_count)
 
-    # ----------------- DATE-WISE & JC-WISE ANALYTICS TABLE -----------------
-    st.markdown("### 📈 Date-wise & JC-wise Breakdown")
-    st.caption("Owner নিৰীক্ষণৰ বাবে: Log Date-wise Total ➔ Approved Total ➔ Pending Total ➔ Reject Total ➔ Closed Date-wise Total")
-
-    analytics_rows = []
-    for r in all_rows:
-        t_id = r[0]
-        t_site = r[1]
-        t_status = r[4]
-        t_created = r[16]
-        t_closed = r[17]
-
-        t_jc = "Unknown"
-        for jc_opt in JC_LIST:
-            if f"[{jc_opt}]" in t_site:
-                t_jc = jc_opt
-                break
-
-        log_date = t_created.split(" ")[0] if t_created else "N/A"
-        close_date = t_closed.split(" ")[0] if t_closed else "N/A"
-
-        analytics_rows.append({
-            "Ticket ID": t_id,
-            "JC": t_jc,
-            "Log Date": log_date,
-            "Close Date": close_date,
-            "Status": t_status
-        })
-
-    if analytics_rows:
-        df_all = pd.DataFrame(analytics_rows)
-        dates_list = sorted(list(set(df_all["Log Date"].unique()) - {"N/A"}), reverse=True)
-
-        summary_records = []
-        for d in dates_list:
-            d_df = df_all[df_all["Log Date"] == d]
-            for jc in JC_LIST:
-                jc_df = d_df[d_df["JC"] == jc]
-                t_log = len(jc_df)
-                if t_log > 0:
-                    t_approved = len(jc_df[~jc_df["Status"].isin(["PENDING_SM", "REJECTED"])])
-                    t_pending = len(jc_df[jc_df["Status"] == "PENDING_SM"])
-                    t_rejected = len(jc_df[jc_df["Status"] == "REJECTED"])
-                    t_closed_on_date = len(df_all[(df_all["Close Date"] == d) & (df_all["JC"] == jc) & (df_all["Status"] == "CLOSED")])
-
-                    summary_records.append({
-                        "Date": d,
-                        "Job Centre (JC)": jc,
-                        "Log Date-wise Total": t_log,
-                        "Approved Total": t_approved,
-                        "Pending Total": t_pending,
-                        "Reject Total": t_rejected,
-                        "Closed Date-wise Total": t_closed_on_date
-                    })
-
-        summary_df = pd.DataFrame(summary_records)
-        st.dataframe(summary_df, use_container_width=True)
-
-        excel_buffer = io.BytesIO()
-        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-            summary_df.to_excel(writer, index=False, sheet_name="Date_JC_Summary")
-            df_all.to_excel(writer, index=False, sheet_name="All_Tickets_Data")
-
-        st.download_button(
-            label="📥 Download Date-wise & JC-wise Report (Excel)",
-            data=excel_buffer.getvalue(),
-            file_name=f"DG_Summary_Report_{get_ist_now().strftime('%Y%m%d_%H%M')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-
+    # ----------------- FILTERS -----------------
     st.write("---")
-
     f_c1, f_c2, f_c3 = st.columns(3)
     with f_c1:
         trt_filter = st.selectbox(
@@ -550,10 +496,104 @@ else:
         if trt_match and jc_match and sm_match:
             filtered_rows.append((r, t_jc, trt_str, trt_cat))
 
+    # ----------------- 🌟 MASTER TICKETS TABLE (ALL TKT EKELOGE) -----------------
+    st.markdown("### 📋 All Tickets Master Table (একেদমে সকলো টিকট একেলগে)")
     st.caption(f"Showing **{len(filtered_rows)}** matching tickets out of {total_count}")
 
-    if not filtered_rows:
+    if filtered_rows:
+        table_data = []
+        for item in reversed(filtered_rows):
+            r, t_jc, trt_str, trt_cat = item
+            (t_id, t_site, t_dg, t_desc, t_status, t_docket, t_eng, t_logged_by, 
+             t_mobile, t_l_selfie, t_l_loc, t_act_selfie, t_act_loc, t_rect, 
+             t_fphoto, t_rphoto, t_created_at, t_closed_at) = r
+
+            # Get engineer & technician names
+            eng_name = USERS.get(t_eng, {}).get("name", t_eng) if t_eng else "Not Assigned"
+            tech_name = USERS.get(t_logged_by, {}).get("name", t_logged_by)
+
+            table_data.append({
+                "Ticket ID": t_id,
+                "Site ID & JC": t_site,
+                "DG Rating": t_dg,
+                "Status": t_status,
+                "TRT Aging": trt_str,
+                "TRT Category": trt_cat,
+                "Logged By (Tech)": f"{tech_name} ({t_mobile})",
+                "Docket No": t_docket if t_docket else "-",
+                "Assigned Engineer": eng_name,
+                "Created At (IST)": format_dt(t_created_at),
+                "Closed At (IST)": format_dt(t_closed_at) if t_closed_at else "-"
+            })
+
+        master_df = pd.DataFrame(table_data)
+        st.dataframe(master_df, use_container_width=True, hide_index=True)
+
+        # Excel Download Button
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+            master_df.to_excel(writer, index=False, sheet_name="All_Tickets")
+        st.download_button(
+            label="📥 Download All Tickets Report (Excel)",
+            data=excel_buffer.getvalue(),
+            file_name=f"DG_All_Tickets_{get_ist_now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+    else:
         st.info("No tickets found matching the selected filters.")
+
+    # ----------------- DATE-WISE & JC-WISE ANALYTICS TABLE -----------------
+    st.write("---")
+    st.markdown("### 📈 Date-wise & JC-wise Breakdown")
+    st.caption("Owner নিৰীক্ষণৰ বাবে: Log Date-wise Total ➔ Approved Total ➔ Pending Total ➔ Reject Total ➔ Closed Date-wise Total")
+
+    analytics_rows = []
+    for r in all_rows:
+        t_id, t_site, t_status = r[0], r[1], r[4]
+        t_created, t_closed = r[16], r[17]
+
+        t_jc = "Unknown"
+        for jc_opt in JC_LIST:
+            if f"[{jc_opt}]" in t_site:
+                t_jc = jc_opt
+                break
+
+        analytics_rows.append({
+            "Ticket ID": t_id,
+            "JC": t_jc,
+            "Log Date": t_created.split(" ")[0] if t_created else "N/A",
+            "Close Date": t_closed.split(" ")[0] if t_closed else "N/A",
+            "Status": t_status
+        })
+
+    if analytics_rows:
+        df_all = pd.DataFrame(analytics_rows)
+        dates_list = sorted(list(set(df_all["Log Date"].unique()) - {"N/A"}), reverse=True)
+
+        summary_records = []
+        for d in dates_list:
+            d_df = df_all[df_all["Log Date"] == d]
+            for jc in JC_LIST:
+                jc_df = d_df[d_df["JC"] == jc]
+                t_log = len(jc_df)
+                if t_log > 0:
+                    summary_records.append({
+                        "Date": d,
+                        "Job Centre (JC)": jc,
+                        "Log Date Total": t_log,
+                        "Approved": len(jc_df[~jc_df["Status"].isin(["PENDING_SM", "REJECTED"])]),
+                        "Pending SM": len(jc_df[jc_df["Status"] == "PENDING_SM"]),
+                        "Rejected": len(jc_df[jc_df["Status"] == "REJECTED"]),
+                        "Closed on Date": len(df_all[(df_all["Close Date"] == d) & (df_all["JC"] == jc) & (df_all["Status"] == "CLOSED")])
+                    })
+
+        if summary_records:
+            st.dataframe(pd.DataFrame(summary_records), use_container_width=True)
+
+    # ----------------- DETAILED TICKET ACTION CARDS -----------------
+    st.write("---")
+    st.subheader("🔍 Ticket Action & Individual Details")
 
     for item in reversed(filtered_rows):
         r, ticket_jc, trt_str, trt_cat = item
@@ -621,7 +661,7 @@ else:
                 with c_act2:
                     st.image(t_act_selfie, caption="Action Selfie", width=80)
 
-            # ----------------- SERVICE MANAGER & OWNER APPROVAL -----------------
+            # ----------------- SERVICE MANAGER APPROVAL -----------------
             if role == "Service Manager" and t_status == "PENDING_SM":
                 manager_jc = user.get("jc", "")
                 is_authorized = (manager_jc == "All") or (ticket_jc == manager_jc)
@@ -657,7 +697,7 @@ else:
                             break
                     st.warning(f"🔒 Ticket belongs to **{ticket_jc} JC**. Only **{assigned_sm_name}** or the **Central Supervisor** can approve/reject.")
 
-            # 3. Docket Team Stage
+            # ----------------- DOCKET ASSIGNMENT -----------------
             elif role == "Docket Team" and t_status == "PENDING_DOCKET":
                 col_d1, col_d2 = st.columns(2)
                 with col_d1:
@@ -682,7 +722,7 @@ else:
                     else:
                         st.error("Please enter a Docket Number.")
 
-            # 4. Service Engineer Stage
+            # ----------------- ENGINEER WORK RECTIFICATION -----------------
             elif role == "Service Engineer" and t_status == "ASSIGNED_ENG":
                 if t_eng == current_username:
                     st.success("🔧 This ticket is assigned to you:")
@@ -708,7 +748,7 @@ else:
                     assigned_name = USERS.get(t_eng, {}).get("name", t_eng)
                     st.info(f"🔒 This ticket is assigned to **{assigned_name}**.")
 
-            # 5. Utility Tech Final Verification
+            # ----------------- UTILITY TECH FINAL CLOSURE -----------------
             elif role == "Utility Technician" and t_status == "PENDING_UT_VERIFY":
                 if t_logged_by == current_username:
                     st.write("🔍 *You logged this ticket. Please verify work done and decide:*")

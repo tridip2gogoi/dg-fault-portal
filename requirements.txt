@@ -4,3 +4,5 @@ requests
 pytz
 pandas
 openpyxl
+gspread
+google-auth

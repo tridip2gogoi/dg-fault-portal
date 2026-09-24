@@ -434,20 +434,20 @@ else:
     # =========================================================================
     # 🌟 ১. TOTAL DASHBOARD (সমগ্ৰ প্ৰকল্পৰ লাইভ অৱলোকন - সকলোৱে দেখিব)
     # =========================================================================
-    st.subheader("📊 Live DG Fault Tracker & Project Overview (মুঠ ডেশ্ববৰ্ড)")[cite: 3]
+    st.subheader("📊 Live DG Fault Tracker & Project Overview (মুঠ ডেশ্ববৰ্ড)")
 
     all_rows = load_all_faults()
 
-    total_count = len(all_rows)[cite: 3]
-    pending_sm_count = sum(1 for r in all_rows if str(r[4]).strip() == 'PENDING_SM')[cite: 3]
-    in_progress_count = sum(1 for r in all_rows if str(r[4]).strip() in ['PENDING_DOCKET', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY', 'PENDING_UT_SUP_VERIFY'])[cite: 3]
-    closed_count = sum(1 for r in all_rows if str(r[4]).strip() == 'CLOSED')[cite: 3]
+    total_count = len(all_rows)
+    pending_sm_count = sum(1 for r in all_rows if str(r[4]).strip() == 'PENDING_SM')
+    in_progress_count = sum(1 for r in all_rows if str(r[4]).strip() in ['PENDING_DOCKET', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY', 'PENDING_UT_SUP_VERIFY'])
+    closed_count = sum(1 for r in all_rows if str(r[4]).strip() == 'CLOSED')
 
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)[cite: 3]
-    kpi1.metric("মুঠ টিকট (Total Tickets)", total_count)[cite: 3]
-    kpi2.metric("মেনেজাৰ অনুমোদনৰ অপেক্ষাত (Pending SM)", pending_sm_count)[cite: 3]
-    kpi3.metric("মেৰামতিৰ কাম চলি থকা (Under Rectification)", in_progress_count)[cite: 3]
-    kpi4.metric("মুঠ বন্ধ হোৱা (Total Closed)", closed_count)[cite: 3]
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("মুঠ টিকট (Total Tickets)", total_count)
+    kpi2.metric("মেনেজাৰ অনুমোদনৰ অপেক্ষাত (Pending SM)", pending_sm_count)
+    kpi3.metric("মেৰামতিৰ কাম চলি থকা (Under Rectification)", in_progress_count)
+    kpi4.metric("মুঠ বন্ধ হোৱা (Total Closed)", closed_count)
 
     # TRT Aging আৰু Date-wise প্ৰকল্প সাৰাংশ গণনা
     analytics_rows = []
@@ -513,8 +513,8 @@ else:
                     })
 
         if summary_records:
-            with st.expander("📈 তাৰিখ আৰু JC অনুসৰি প্ৰকল্পৰ বিতং তালিকা চাওক", expanded=False):[cite: 3]
-                st.dataframe(pd.DataFrame(summary_records), use_container_width=True)[cite: 3]
+            with st.expander("📈 তাৰিখ আৰু JC অনুসৰি প্ৰকল্পৰ বিতং তালিকা চাওক", expanded=False):
+                st.dataframe(pd.DataFrame(summary_records), use_container_width=True)
 
     st.divider()
 
@@ -603,8 +603,8 @@ else:
             my_cases.append((r, t_jc, trt_str, trt_cat))
 
     # ----------------- MY TICKETS MASTER TABLE -----------------
-    st.markdown("### 📋 মোৰ টিকটৰ তালিকা (My Tickets Master Table)")[cite: 3]
-    st.caption(f"আপোনাৰ নামত উপলব্ধ সক্ৰিয়/সম্প্ৰতি বন্ধ হোৱা মুঠ **{len(my_cases)}** টা টিকট দেখুওৱা হৈছে")[cite: 3]
+    st.markdown("### 📋 মোৰ টিকটৰ তালিকা (My Tickets Master Table)")
+    st.caption(f"আপোনাৰ নামত উপলব্ধ সক্ৰিয়/সম্প্ৰতি বন্ধ হোৱা মুঠ **{len(my_cases)}** টা টিকট দেখুওৱা হৈছে")
 
     if my_cases:
         table_data = []
@@ -645,11 +645,11 @@ else:
             use_container_width=True
         )
     else:
-        st.info("আপোনাৰ একাউণ্টৰ বাবে কোনো সক্ৰিয় টিকট পোৱা নগ'ল।")[cite: 3]
+        st.info("আপোনাৰ একাউণ্টৰ বাবে কোনো সক্ৰিয় টিকট পোৱা নগ'ল।")
 
     # ----------------- DETAILED TICKET ACTION CARDS (KEWAL NIJOR CASE) -----------------
-    st.write("---")[cite: 3]
-    st.subheader("🔍 Ticket Action & Individual Details")[cite: 3]
+    st.write("---")
+    st.subheader("🔍 Ticket Action & Individual Details")
 
     for item in reversed(my_cases):
         r, ticket_jc, trt_str, trt_cat = item

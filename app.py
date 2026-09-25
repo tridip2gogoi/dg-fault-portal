@@ -139,7 +139,8 @@ def send_telegram_alert(message_text):
 USERS = {
     # Admin Accounts
     "tridip.gogoi": {"password": "Gogoi@6095", "role": "Admin", "name": "Super Admin (All JC)", "jc": "All"},
-    "sukanta.biswas": {"password": "Sukanta@2026", "role": "Admin", "name": "(Central Admin)", "jc": "All"},
+    "sukanta.biswas": {"password": "Biswas@2026", "role": "Admin", "name": "(Central Admin)", "jc": "All"},
+    "rintu.tamuli": {"password": "Tamuli@2026", "role": "Admin", "name": "(Central Admin)", "jc": "All"},
 
     # ----------------- UTILITY TECHNICIANS (64 USERS MAPPED TO JC) -----------------
     # Shillong JC

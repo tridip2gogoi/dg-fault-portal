@@ -5,7 +5,7 @@ import pytz
 import pandas as pd
 import io
 import sqlite3
-from datetime import datetime
+from datetime import datetime, date
 from streamlit_js_eval import get_geolocation
 
 st.set_page_config(page_title="DG Fault Management Portal", layout="wide")
@@ -38,9 +38,17 @@ def init_db():
             fault_photo TEXT,
             rect_photo TEXT,
             created_at TEXT,
-            closed_at TEXT
+            closed_at TEXT,
+            visit_date TEXT
         )
     ''')
+    c.execute("PRAGMA table_info(faults)")
+    cols = [info[1] for info in c.fetchall()]
+    if "visit_date" not in cols:
+        try:
+            c.execute("ALTER TABLE faults ADD COLUMN visit_date TEXT")
+        except Exception:
+            pass
     conn.commit()
     conn.close()
 
@@ -63,7 +71,7 @@ def add_fault_to_sheet(row_data):
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
         c.execute('''
-            INSERT INTO faults VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO faults VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ''', tuple(row_data))
         conn.commit()
         conn.close()
@@ -143,7 +151,7 @@ USERS = {
     "rintu.tamuli": {"password": "Tamuli@2026", "role": "Admin", "name": "(Central Manager)", "jc": "All"},
 
     # ----------------- UTILITY TECHNICIANS (64 USERS MAPPED TO JC) -----------------
-    # Shillong JC
+    # Shillong JC[cite: 2]
     "tech1": {"password": "123", "role": "Utility Technician", "name": "Ebestar Khongsit (Tech)", "jc": "Shillong"},
     "tech2": {"password": "123", "role": "Utility Technician", "name": "Augustar Buddon (Tech)", "jc": "Shillong"},
     "tech3": {"password": "123", "role": "Utility Technician", "name": "BANKITKUPAR RANI (Tech)", "jc": "Shillong"},
@@ -173,7 +181,7 @@ USERS = {
     "tech27": {"password": "123", "role": "Utility Technician", "name": "UTPAL GOHAIN (Tech)", "jc": "Shillong"},
     "tech28": {"password": "123", "role": "Utility Technician", "name": "Wahidur Rahman (Tech)", "jc": "Shillong"},
 
-    # Jowai JC
+    # Jowai JC[cite: 2]
     "tech29": {"password": "123", "role": "Utility Technician", "name": "RICHARD SUMER (Tech)", "jc": "Jowai"},
     "tech30": {"password": "123", "role": "Utility Technician", "name": "ORLANDO SANGMA (Tech)", "jc": "Jowai"},
     "tech31": {"password": "123", "role": "Utility Technician", "name": "SHANDIP SYLLIANG (Tech)", "jc": "Jowai"},
@@ -185,7 +193,7 @@ USERS = {
     "tech37": {"password": "123", "role": "Utility Technician", "name": "MOUCHAM ALI AHMED (Tech)", "jc": "Jowai"},
     "tech38": {"password": "123", "role": "Utility Technician", "name": "WAIDUL HAQUE MAJUMDER (Tech)", "jc": "Jowai"},
 
-    # Tura JC
+    # Tura JC[cite: 2]
     "tech39": {"password": "123", "role": "Utility Technician", "name": "Anupam Kumer shing (Tech)", "jc": "Tura"},
     "tech40": {"password": "123", "role": "Utility Technician", "name": "Jul Hussain (Tech)", "jc": "Tura"},
     "tech41": {"password": "123", "role": "Utility Technician", "name": "SHARIFUL ISLAM (Tech)", "jc": "Tura"},
@@ -352,14 +360,14 @@ if not st.session_state.logged_in:
     public_rows = load_all_faults()
     pub_total = len(public_rows)
     pub_pending_sm = sum(1 for r in public_rows if r[4] == 'PENDING_SM')
-    pub_in_prog = sum(1 for r in public_rows if r[4] in ['PENDING_DOCKET', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY', 'PENDING_UT_SUP_VERIFY'])
+    pub_in_prog = sum(1 for r in public_rows if r[4] in ['PENDING_DOCKET', 'PENDING_SE_ALIGN', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY', 'PENDING_UT_SUP_VERIFY'])
     pub_closed = sum(1 for r in public_rows if r[4] == 'CLOSED')
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("(Total Tickets)", pub_total)
-    k2.metric("(Pending SM)", pub_pending_sm)
-    k3.metric("(Under Rectification)", pub_in_prog)
-    k4.metric("(Total Closed)", pub_closed)
+    k1.metric("Total Tickets", pub_total)
+    k2.metric("Pending SM Approval", pub_pending_sm)
+    k3.metric("Under Rectification", pub_in_prog)
+    k4.metric("Total Closed", pub_closed)
 
 else:
     current_username = st.session_state.username
@@ -456,7 +464,7 @@ else:
                     row_payload = [
                         new_id, site_with_jc, dg_combined, full_desc, 'PENDING_SM', '', '', 
                         current_username, clean_mobile, user_selfie, user_loc, 
-                        '', '', '', photo_paths, '', now_time, ''
+                        '', '', '', photo_paths, '', now_time, '', ''
                     ]
                     success = add_fault_to_sheet(row_payload)
 
@@ -464,17 +472,17 @@ else:
                         photo_count = len(fault_imgs) if fault_imgs else 0
                         tg_msg = (
                             f"🚨 *New DG Fault Logged!*\n\n"
-                            f" *Ticket ID:* `{new_id}`\n"
-                            f" *Site ID:* {site}\n"
-                            f" *JC:* {selected_jc}\n"
-                            f" *DG:* {dg_make} ({dg_rating})\n"
-                            f" *Contact No:* [{clean_mobile}](tel:{clean_mobile})\n"
+                            f"   *Ticket ID:* `{new_id}`\n"
+                            f"📌 *Site ID:* `{site}`\n"
+                            f"   *JC:* {selected_jc}\n"
+                            f"   *DG:* {dg_make} ({dg_rating})\n"
+                            f"   *Contact No:* [{clean_mobile}](tel:{clean_mobile})\n"
                             f"📞 *Online Support:* {support_final_name}\n"
-                            f" *Support Guidance:* {online_sup_remarks if online_sup_remarks else 'N/A'}\n"
-                            f" *Fault Remarks:* {desc}\n"
-                            f" *Photos Uploaded:* {photo_count}\n"
-                            f" *Logged by:* {user['name']} (📞 {clean_mobile})\n"
-                            f" *Date & Time (IST):* {format_dt(now_time)}"
+                            f"   *Support Guidance:* {online_sup_remarks if online_sup_remarks else 'N/A'}\n"
+                            f"📝 *Fault Remarks:* {desc}\n"
+                            f"   *Photos Uploaded:* {photo_count}\n"
+                            f"👤 *Logged by:* {user['name']} (📞 {clean_mobile})\n"
+                            f"   *Date & Time (IST):* {format_dt(now_time)}"
                         )
                         send_telegram_alert(tg_msg)
                         st.success(f"Fault ticket {new_id} saved to database! Telegram notification sent.")
@@ -499,6 +507,10 @@ else:
         t_logged_by = str(r[7]).strip()
         t_created = str(r[16]).strip()
         t_closed = str(r[17]).strip()
+        t_visit_date = str(r[18]).strip() if len(r) > 18 else ""
+
+        # Extract pure Site ID without JC tag
+        pure_site_id = t_site.split(" [")[0].strip()
 
         # JIO Centre (JC) Identification
         t_jc = "Unknown"
@@ -567,21 +579,21 @@ else:
                         pass
 
         elif role == "Docket Team":
-            if t_status in ["PENDING_DOCKET", "ASSIGNED_ENG", "PENDING_UT_VERIFY", "PENDING_UT_SUP_VERIFY"]:
+            if t_status in ["PENDING_DOCKET", "PENDING_SE_ALIGN", "ASSIGNED_ENG", "PENDING_UT_VERIFY", "PENDING_UT_SUP_VERIFY"]:
                 is_my_case = True
 
         if is_my_case:
             trt_str, trt_cat, trt_hours = calculate_trt(t_created, t_closed)
-            my_cases.append((r, t_jc, trt_str, trt_cat))
+            my_cases.append((r, t_jc, trt_str, trt_cat, t_visit_date, pure_site_id))
 
     # =========================================================================
-    # ১. USER LIVE TRACKER & SUMMARY
+    # 1. USER LIVE TRACKER & SUMMARY
     # =========================================================================
     st.subheader(f"📊 My Live DG Fault Tracker ({user['name']})")
 
     user_total_count = len(my_cases)
     user_pending_sm_count = sum(1 for item in my_cases if str(item[0][4]).strip() == 'PENDING_SM')
-    user_in_progress_count = sum(1 for item in my_cases if str(item[0][4]).strip() in ['PENDING_DOCKET', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY', 'PENDING_UT_SUP_VERIFY'])
+    user_in_progress_count = sum(1 for item in my_cases if str(item[0][4]).strip() in ['PENDING_DOCKET', 'PENDING_SE_ALIGN', 'ASSIGNED_ENG', 'PENDING_UT_VERIFY', 'PENDING_UT_SUP_VERIFY'])
     user_closed_count = sum(1 for item in my_cases if str(item[0][4]).strip() == 'CLOSED')
 
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
@@ -591,36 +603,40 @@ else:
     kpi4.metric("My Closed (Last 30 Days)", user_closed_count)
 
     # =========================================================================
-    # ২. JC-WISE BREAKDOWN TABLE (PENDING DOCKET, ASSIGNED ENG, VERIFICATION)
+    # 2. JC-WISE BREAKDOWN TABLE
     # =========================================================================
     st.write("---")
-    st.markdown("#### 🏢 JC-wise Status & In-Progress (JIO Centre)")
+    st.markdown("#### 🏢 JC-wise Status & In-Progress Breakdown (JIO Centre)")
 
     jc_summary_data = []
     for jc in JC_LIST:
         jc_tickets = [item for item in my_cases if item[1] == jc]
         
-        # 1. PENDING_DOCKET
+        # 1. Tier 1: Awaiting Docket (PENDING_DOCKET)
         p_docket = sum(1 for item in jc_tickets if str(item[0][4]).strip() == 'PENDING_DOCKET')
         
-        # 2. ASSIGNED_ENG
+        # 2. Tier 2: Awaiting SM SE Align & Visit Date (PENDING_SE_ALIGN)
+        p_se_align = sum(1 for item in jc_tickets if str(item[0][4]).strip() == 'PENDING_SE_ALIGN')
+
+        # 3. Tier 3: Assigned to Engineer (ASSIGNED_ENG)
         assigned_eng = sum(1 for item in jc_tickets if str(item[0][4]).strip() == 'ASSIGNED_ENG')
         
-        # 3. PENDING_UT_VERIFY + PENDING_UT_SUP_VERIFY
+        # 4. Tier 4: Verification (PENDING_UT_VERIFY + PENDING_UT_SUP_VERIFY)
         ut_verify = sum(1 for item in jc_tickets if str(item[0][4]).strip() == 'PENDING_UT_VERIFY')
         sup_verify = sum(1 for item in jc_tickets if str(item[0][4]).strip() == 'PENDING_UT_SUP_VERIFY')
         total_verify = ut_verify + sup_verify
         
         # Total In Progress
-        total_in_prog = p_docket + assigned_eng + total_verify
+        total_in_prog = p_docket + p_se_align + assigned_eng + total_verify
         
         # Pending SM Approval
         p_sm = sum(1 for item in jc_tickets if str(item[0][4]).strip() == 'PENDING_SM')
 
         jc_summary_data.append({
             "JIO Centre (JC)": jc,
-            "Pending SM": p_sm,
+            "Pending SM Approval": p_sm,
             "Pending Docket": p_docket,
+            "Pending SE Align (By SM)": p_se_align,
             "Assigned Engineer": assigned_eng,
             "Under Verification": f"{total_verify} (UT: {ut_verify} | Sup: {sup_verify})",
             "Total In Progress": total_in_prog
@@ -644,7 +660,7 @@ else:
     st.divider()
 
     # =========================================================================
-    # ৩. USER'S TICKETS MASTER TABLE
+    # 3. USER'S TICKETS MASTER TABLE
     # =========================================================================
     st.markdown("### 📋 My Tickets Master Table")
     st.caption(f"Showing **{len(my_cases)}** actionable tickets assigned to or created by you")
@@ -652,17 +668,18 @@ else:
     if my_cases:
         table_data = []
         for item in reversed(my_cases):
-            r, t_jc, trt_str, trt_cat = item
+            r, t_jc, trt_str, trt_cat, t_visit_date, pure_site_id = item
             (t_id, t_site, t_dg, t_desc, t_status, t_docket, t_eng, t_logged_by, 
              t_mobile, t_l_selfie, t_l_loc, t_act_selfie, t_act_loc, t_rect, 
-             t_fphoto, t_rphoto, t_created_at, t_closed_at) = r
+             t_fphoto, t_rphoto, t_created_at, t_closed_at, *rest) = r
 
             eng_name = USERS.get(t_eng, {}).get("name", t_eng) if t_eng else "Not Assigned"
             tech_name = USERS.get(t_logged_by, {}).get("name", t_logged_by)
 
             table_data.append({
                 "Ticket ID": t_id,
-                "Site ID & JC": t_site,
+                "Site ID": pure_site_id,
+                "Site & JC": t_site,
                 "DG Rating": t_dg,
                 "Status": t_status,
                 "TRT Aging": trt_str,
@@ -670,6 +687,7 @@ else:
                 "Logged By (Tech)": f"{tech_name} ({t_mobile})",
                 "Docket No": t_docket if t_docket else "-",
                 "Assigned Engineer": eng_name,
+                "Scheduled Visit Date": t_visit_date if t_visit_date else "-",
                 "Created At (IST)": format_dt(t_created_at),
                 "Closed At (IST)": format_dt(t_closed_at) if t_closed_at else "-"
             })
@@ -691,16 +709,16 @@ else:
         st.info("No active tickets found matching your user account.")
 
     # =========================================================================
-    # ৪. DETAILED TICKET ACTION CARDS (USER'S CASES ONLY)
+    # 4. DETAILED TICKET ACTION CARDS (4-TIER WORKFLOW)
     # =========================================================================
     st.write("---")
     st.subheader("🔍 Ticket Action & Individual Details")
 
     for item in reversed(my_cases):
-        r, ticket_jc, trt_str, trt_cat = item
+        r, ticket_jc, trt_str, trt_cat, t_visit_date, pure_site_id = item
         (t_id, t_site, t_dg, t_desc, t_status, t_docket, t_eng, t_logged_by, 
          t_mobile, t_l_selfie, t_l_loc, t_act_selfie, t_act_loc, t_rect, 
-         t_fphoto, t_rphoto, t_created_at, t_closed_at) = r
+         t_fphoto, t_rphoto, t_created_at, t_closed_at, *rest) = r
 
         created_str = format_dt(t_created_at)
         closed_str = format_dt(t_closed_at)
@@ -712,9 +730,10 @@ else:
         else:
             trt_badge = f"🔴 TRT: {trt_str} (Critical)"
 
-        with st.expander(f"{t_id} | {t_site} - {t_dg} | [{t_status}] | {trt_badge} 📅 {created_str}", expanded=(t_status != 'CLOSED')):
+        with st.expander(f"{t_id} | Site ID: {pure_site_id} ({ticket_jc}) - {t_dg} | [{t_status}] | {trt_badge} 📅 {created_str}", expanded=(t_status != 'CLOSED')):
             c_meta1, c_meta2, c_meta3 = st.columns(3)
             with c_meta1:
+                st.write(f"🏢 **Site ID:** `{pure_site_id}`")
                 st.write(f"🕒 **Logged Date (IST):** {created_str}")
             with c_meta2:
                 if t_status == "CLOSED" and closed_str:
@@ -741,9 +760,13 @@ else:
             display_images_gallery(t_fphoto, "Fault Photos")
 
             if t_docket:
+                st.markdown(f"📋 **Docket No:** `{t_docket}`")
+            if t_eng:
                 eng_info = USERS.get(t_eng, {})
                 eng_name = eng_info.get("name", t_eng)
-                st.markdown(f"Docket No: **{t_docket}** | Assigned Engineer: **{eng_name}**")
+                st.markdown(f"👷 **Assigned Engineer:** **{eng_name}**")
+            if t_visit_date:
+                st.markdown(f"📅 **Scheduled Site Visit Date:** **{t_visit_date}**")
 
             if t_rect:
                 st.warning(f"Rectification Notes: {t_rect}")
@@ -760,7 +783,7 @@ else:
                 with c_act2:
                     st.image(t_act_selfie, caption="Action Selfie", width=80)
 
-            # ----------------- SERVICE MANAGER / ADMIN APPROVAL -----------------
+            # ----------------- TIER 1: SM / ADMIN INITIAL APPROVAL (PENDING_DOCKET) -----------------
             if (role in ["Service Manager", "Admin"]) and t_status == "PENDING_SM":
                 manager_jc = user.get("jc", "")
                 is_authorized = (role == "Admin") or (manager_jc == "All") or (ticket_jc == manager_jc)
@@ -768,14 +791,20 @@ else:
                 if is_authorized:
                     st.success(f"✔️ You hold approval authority for **{ticket_jc} JC** | Elapsed TRT: **{trt_str}**")
                     c1, c2 = st.columns(2)
-                    if c1.button("✅ Approve", key=f"sm_app_{t_id}"):
+                    if c1.button("✅ Approve (Send for Docket)", key=f"sm_app_{t_id}"):
                         update_fault_in_sheet(t_id, {
                             "status": "PENDING_DOCKET",
                             "action_by_selfie": user_selfie,
                             "action_by_loc": user_loc
                         })
                         send_telegram_alert(
-                            f"✅ Fault APPROVED by SM\nTicket: {t_id}\nJC: {ticket_jc}\nTRT at Approval: {trt_str}\nManager: {user['name']}\nStatus: PENDING DOCKET"
+                            f"✅ *Fault APPROVED by SM*\n\n"
+                            f"📌 *Ticket ID:* `{t_id}`\n"
+                            f"   *Site ID:* `{pure_site_id}`\n"
+                            f"   *JC:* {ticket_jc}\n"
+                            f"   *TRT at Approval:* {trt_str}\n"
+                            f"👤 *Manager:* {user['name']}\n"
+                            f"   *Status:* PENDING DOCKET"
                         )
                         st.rerun()
                     if c2.button("❌ Reject", key=f"sm_rej_{t_id}"):
@@ -785,7 +814,13 @@ else:
                             "action_by_loc": user_loc
                         })
                         send_telegram_alert(
-                            f"❌ Fault REJECTED by SM\nTicket: {t_id}\nJC: {ticket_jc}\nTRT at Rejection: {trt_str}\nManager: {user['name']}"
+                            f"❌ *Fault REJECTED by SM*\n\n"
+                            f"   *Ticket ID:* `{t_id}`\n"
+                            f"   *Site ID:* `{pure_site_id}`\n"
+                            f"   *JC:* {ticket_jc}\n"
+                            f"   *TRT at Rejection:* {trt_str}\n"
+                            f"👤 *Manager:* {user['name']}\n"
+                            f"   *Status:* REJECTED"
                         )
                         st.rerun()
                 else:
@@ -796,35 +831,82 @@ else:
                             break
                     st.warning(f"🔒 Ticket belongs to **{ticket_jc} JC**. Only **{assigned_sm_name}** or Admin can approve/reject.")
 
-            # ----------------- DOCKET ASSIGNMENT (DOCKET DESK / ADMIN) -----------------
+            # ----------------- TIER 2: DOCKET TEAM - PROVIDE DOCKET ONLY (PENDING_SE_ALIGN) -----------------
             elif (role in ["Docket Team", "Admin"]) and t_status == "PENDING_DOCKET":
-                col_d1, col_d2 = st.columns(2)
-                with col_d1:
-                    d_no = st.text_input("Enter Docket No", key=f"doc_in_{t_id}")
-                with col_d2:
-                    selected_eng = st.selectbox(
-                        "Assign Service Engineer",
-                        options=list(ENGINEERS_LIST.keys()),
-                        format_func=lambda x: ENGINEERS_LIST[x],
-                        key=f"doc_eng_{t_id}"
-                    )
-                if st.button("Submit & Assign", key=f"doc_btn_{t_id}"):
-                    if d_no:
+                st.info("📋 **Docket Desk Action:** Enter the Docket Number only. SE alignment & visit date will be assigned by the Service Manager.")
+                d_no = st.text_input("Enter Docket Number", key=f"doc_in_{t_id}")
+                if st.button("Submit Docket Number", key=f"doc_btn_{t_id}"):
+                    if d_no.strip():
                         update_fault_in_sheet(t_id, {
-                            "docket": d_no,
-                            "assigned_eng": selected_eng,
-                            "status": "ASSIGNED_ENG"
+                            "docket": d_no.strip(),
+                            "status": "PENDING_SE_ALIGN",
+                            "action_by_selfie": user_selfie,
+                            "action_by_loc": user_loc
                         })
-                        eng_name = ENGINEERS_LIST[selected_eng]
-                        send_telegram_alert(f"📋 Docket Assigned\nTicket: {t_id}\nJC: {ticket_jc}\nTRT: {trt_str}\nDocket No: {d_no}\nAssigned Engineer: {eng_name}")
+                        send_telegram_alert(
+                            f"📋 *Docket Number Provided!*\n\n"
+                            f"   *Ticket ID:* `{t_id}`\n"
+                            f"   *Site ID:* `{pure_site_id}`\n"
+                            f"   *JC:* {ticket_jc}\n"
+                            f"📋 *Docket No:* `{d_no.strip()}`\n"
+                            f"   *Status:* PENDING SE ALIGN & VISIT DATE BY SM"
+                        )
                         st.rerun()
                     else:
-                        st.error("Please enter a Docket Number.")
+                        st.error("Please enter a valid Docket Number.")
 
-            # ----------------- ENGINEER WORK RECTIFICATION -----------------
+            # ----------------- TIER 3: SM / ADMIN - SE ALIGN & VISIT DATE SELECTION (ASSIGNED_ENG) -----------------
+            elif (role in ["Service Manager", "Admin"]) and t_status == "PENDING_SE_ALIGN":
+                manager_jc = user.get("jc", "")
+                is_authorized = (role == "Admin") or (manager_jc == "All") or (ticket_jc == manager_jc)
+
+                if is_authorized:
+                    st.success(f"🎯 **SM Action Required:** Docket `{t_docket}` is ready for Site `{pure_site_id}`. Align Service Engineer and Select Visit Date.")
+                    col_sm1, col_sm2 = st.columns(2)
+                    with col_sm1:
+                        selected_eng = st.selectbox(
+                            "Select Service Engineer (SE)",
+                            options=list(ENGINEERS_LIST.keys()),
+                            format_func=lambda x: ENGINEERS_LIST[x],
+                            key=f"sm_eng_{t_id}"
+                        )
+                    with col_sm2:
+                        selected_visit_date = st.date_input(
+                            "Select Site Visit Date",
+                            value=date.today(),
+                            min_value=date.today(),
+                            key=f"sm_date_{t_id}"
+                        )
+
+                    if st.button("Confirm SE & Schedule Visit Date", key=f"sm_align_btn_{t_id}"):
+                        v_date_str = selected_visit_date.strftime("%d-%b-%Y")
+                        update_fault_in_sheet(t_id, {
+                            "assigned_eng": selected_eng,
+                            "visit_date": v_date_str,
+                            "status": "ASSIGNED_ENG",
+                            "action_by_selfie": user_selfie,
+                            "action_by_loc": user_loc
+                        })
+                        eng_name = ENGINEERS_LIST[selected_eng]
+                        send_telegram_alert(
+                            f"👷 *Service Engineer Aligned by SM!*\n\n"
+                            f"   *Ticket ID:* `{t_id}`\n"
+                            f"   *Site ID:* `{pure_site_id}`\n"
+                            f"   *JC:* {ticket_jc}\n"
+                            f"   *Docket No:* `{t_docket}`\n"
+                            f"👤 *Assigned SE:* {eng_name}\n"
+                            f"📅 *Scheduled Visit Date:* {v_date_str}\n"
+                            f"👤 *Manager:* {user['name']}\n"
+                            f"   *Status:* ASSIGNED_ENG"
+                        )
+                        st.rerun()
+                else:
+                    st.warning(f"🔒 Ticket belongs to **{ticket_jc} JC**. Only **{ticket_jc} SM** or Admin can align engineer & date.")
+
+            # ----------------- TIER 4 (A): ENGINEER WORK RECTIFICATION (PENDING_UT_VERIFY) -----------------
             elif role == "Service Engineer" and t_status == "ASSIGNED_ENG":
                 if t_eng == current_username:
-                    st.success("🔧 This ticket is assigned to you:")
+                    st.success(f"🔧 Ticket assigned to you! Site ID: **{pure_site_id}** | Scheduled Visit Date: **{t_visit_date if t_visit_date else 'Immediate'}**")
                     notes = st.text_area("Work Done / Rectification Notes", key=f"eng_in_{t_id}")
                     rect_imgs = st.file_uploader("Upload Post-Work Photos (Multiple allowed)", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"eng_img_{t_id}")
                     
@@ -839,7 +921,16 @@ else:
                                 "action_by_loc": user_loc
                             })
                             rect_count = len(rect_imgs) if rect_imgs else 0
-                            send_telegram_alert(f"🔧 Work Completed by Engineer\nTicket: {t_id}\nJC: {ticket_jc}\nTRT: {trt_str}\nEngineer: {user['name']}\nWork Photos: {rect_count}\nStatus: PENDING UT VERIFICATION")
+                            send_telegram_alert(
+                                f"🔧 *Work Completed by Engineer*\n\n"
+                                f"   *Ticket ID:* `{t_id}`\n"
+                                f"   *Site ID:* `{pure_site_id}`\n"
+                                f"   *JC:* {ticket_jc}\n"
+                                f"   *TRT:* {trt_str}\n"
+                                f"👤 *Engineer:* {user['name']}\n"
+                                f"   *Work Photos:* {rect_count}\n"
+                                f"   *Status:* PENDING UT VERIFICATION"
+                            )
                             st.rerun()
                         else:
                             st.error("Rectification notes are mandatory!")
@@ -847,10 +938,10 @@ else:
                     assigned_name = USERS.get(t_eng, {}).get("name", t_eng)
                     st.info(f"🔒 This ticket is assigned to **{assigned_name}**.")
 
-            # ----------------- 5. UTILITY TECH VERIFICATION -----------------
+            # ----------------- TIER 4 (B): UTILITY TECH VERIFICATION (PENDING_UT_SUP_VERIFY) -----------------
             elif role == "Utility Technician" and t_status == "PENDING_UT_VERIFY":
                 if t_logged_by == current_username:
-                    st.write("🔍 *You logged this ticket. Please verify work done and forward to UT Supervisor:*")
+                    st.write(f"🔍 *Site ID: `{pure_site_id}` — Please verify work done and forward to UT Supervisor:*")
                     c1, c2 = st.columns(2)
                     if c1.button("Approve & Forward to UT Supervisor", key=f"ut_app_{t_id}"):
                         update_fault_in_sheet(t_id, {
@@ -859,22 +950,30 @@ else:
                             "action_by_loc": user_loc
                         })
                         send_telegram_alert(
-                            f"✅ *UT Verified & Forwarded*\n"
-                            f"Ticket: `{t_id}`\nJC: {ticket_jc}\n"
-                            f"TRT: {trt_str}\n"
-                            f"Verified By UT: {user['name']}\n"
-                            f"Status: PENDING UT SUPERVISOR FINAL APPROVAL"
+                            f"✅ *UT Verified & Forwarded*\n\n"
+                            f"   *Ticket ID:* `{t_id}`\n"
+                            f"   *Site ID:* `{pure_site_id}`\n"
+                            f"   *JC:* {ticket_jc}\n"
+                            f"   *TRT:* {trt_str}\n"
+                            f"👤 *Verified By UT:* {user['name']}\n"
+                            f"   *Status:* PENDING UT SUPERVISOR FINAL APPROVAL"
                         )
                         st.rerun()
                     if c2.button("Reject (Re-assign to Engineer)", key=f"ut_rej_{t_id}"):
                         update_fault_in_sheet(t_id, {"status": "ASSIGNED_ENG"})
-                        send_telegram_alert(f"⚠️ Ticket Rejected by UT\nTicket: {t_id}\nJC: {ticket_jc}\nRe-opened for Engineer.")
+                        send_telegram_alert(
+                            f"⚠️ *Ticket Rejected by UT*\n\n"
+                            f" *Ticket ID:* `{t_id}`\n"
+                            f" *Site ID:* `{pure_site_id}`\n"
+                            f" *JC:* {ticket_jc}\n"
+                            f" *Status:* Re-opened for Engineer."
+                        )
                         st.rerun()
                 else:
                     creator_name = USERS.get(t_logged_by, {}).get("name", t_logged_by)
                     st.warning(f"🔒 This fault was logged by **{creator_name}**. Only the creator can verify.")
 
-            # ----------------- 6. UT SUPERVISOR / ADMIN FINAL APPROVAL & CLOSURE -----------------
+            # ----------------- TIER 4 (C): UT SUPERVISOR / ADMIN FINAL CLOSURE (CLOSED) -----------------
             elif (role in ["UT Supervisor", "Admin"]) and t_status == "PENDING_UT_SUP_VERIFY":
                 sup_jc = user.get("jc", "")
                 is_authorized = (role == "Admin") or (sup_jc == "All") or (ticket_jc == sup_jc)
@@ -892,20 +991,23 @@ else:
                         })
                         send_telegram_alert(
                             f"🎉 *Ticket CLOSED (Final Approval by UT Supervisor)*\n\n"
-                            f" *Ticket ID:* `{t_id}`\n"
-                            f" *JC:* {ticket_jc}\n"
-                            f" *Total Resolution TRT:* {trt_str}\n"
-                            f" *Final Closed by UT Sup:* {user['name']}\n"
+                            f"   *Ticket ID:* `{t_id}`\n"
+                            f"   *Site ID:* `{pure_site_id}`\n"
+                            f"   *JC:* {ticket_jc}\n"
+                            f"   *Total Resolution TRT:* {trt_str}\n"
+                            f"👤 *Final Closed by UT Sup:* {user['name']}\n"
                             f"🕒 *Closed At:* {format_dt(now_close)}"
                         )
                         st.rerun()
                     if c_sup2.button("❌ Reject back to Engineer", key=f"sup_rej_{t_id}"):
                         update_fault_in_sheet(t_id, {"status": "ASSIGNED_ENG"})
                         send_telegram_alert(
-                            f"⚠️ Final Approval Rejected by UT Sup\n"
-                            f"Ticket: {t_id}\nJC: {ticket_jc}\n"
-                            f"Rejected by: {user['name']}\n"
-                            f"Status: Re-assigned to Engineer"
+                            f"⚠️ *Final Approval Rejected by UT Sup*\n\n"
+                            f"   *Ticket ID:* `{t_id}`\n"
+                            f"   *Site ID:* `{pure_site_id}`\n"
+                            f"   *JC:* {ticket_jc}\n"
+                            f"👤 *Rejected by:* {user['name']}\n"
+                            f"   *Status:* Re-assigned to Engineer"
                         )
                         st.rerun()
                 else:

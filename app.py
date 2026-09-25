@@ -6,7 +6,7 @@ import pandas as pd
 import io
 import sqlite3
 from datetime import datetime, date
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from streamlit_js_eval import get_geolocation
 
 st.set_page_config(page_title="DG Fault Management Portal", layout="wide")
@@ -259,13 +259,37 @@ ENGINEERS_LIST = {u: USERS[u]['name'] for u in USERS if USERS[u]["role"] == "Ser
 MANAGERS_LIST = {u: USERS[u]['name'] for u in USERS if USERS[u]["role"] == "Service Manager"}
 JC_LIST = ["Tura", "Shillong", "Jowai"]
 
-# ----------------- MEDIUM SIZE IMAGE COMPRESSION & DISPLAY -----------------
-def compress_image_to_medium(image_buffer, max_dimension=800, quality=75):
+# ----------------- FOLDER SYSTEM & COMPRESSION WITH WATERMARK -----------------
+def compress_and_stamp_image(image_buffer, site_id="", user_name="", max_dimension=800, quality=75):
     try:
         img = Image.open(image_buffer)
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
+        
         img.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
+        
+        # Add Dynamic Watermark
+        draw = ImageDraw.Draw(img)
+        w, h = img.size
+        now_str = get_ist_now().strftime("%d-%b-%Y %I:%M %p")
+        tag_lines = [
+            f"Site ID: {site_id}" if site_id else "Site ID: N/A",
+            f"Date: {now_str}",
+            f"User: {user_name}" if user_name else ""
+        ]
+        stamp_text = " | ".join([l for l in tag_lines if l])
+
+        try:
+            font = ImageFont.load_default()
+        except Exception:
+            font = None
+
+        bbox = draw.textbbox((0, 0), stamp_text, font=font) if font else (0, 0, len(stamp_text)*6, 12)
+        txt_h = bbox[3] - bbox[1]
+
+        draw.rectangle([0, h - txt_h - 10, w, h], fill=(0, 0, 0))
+        draw.text((10, h - txt_h - 6), stamp_text, fill=(255, 255, 0), font=font)
+
         out_io = io.BytesIO()
         img.save(out_io, format="JPEG", quality=quality, optimize=True)
         out_io.seek(0)
@@ -275,31 +299,36 @@ def compress_image_to_medium(image_buffer, max_dimension=800, quality=75):
             image_buffer.seek(0)
         return image_buffer
 
-def save_image_buffer(image_buffer, prefix, user_or_ticket):
+def save_image_buffer(image_buffer, prefix, user_or_ticket, site_id="", user_name=""):
     if image_buffer is not None:
-        filename = f"{prefix}_{user_or_ticket}_{int(get_ist_now().timestamp())}_{os.urandom(3).hex()}.jpg"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        compressed = compress_image_to_medium(image_buffer, max_dimension=800, quality=75)
+        target_folder = os.path.join(UPLOAD_FOLDER, str(user_or_ticket))
+        os.makedirs(target_folder, exist_ok=True)
+        
+        filename = f"{prefix}_{int(get_ist_now().timestamp())}_{os.urandom(3).hex()}.jpg"
+        filepath = os.path.join(target_folder, filename)
+        
+        processed = compress_and_stamp_image(image_buffer, site_id=site_id, user_name=user_name, max_dimension=800, quality=75)
         with open(filepath, "wb") as f:
-            if hasattr(compressed, "getvalue"):
-                f.write(compressed.getvalue())
-            elif hasattr(compressed, "get_buffer"):
-                f.write(compressed.get_buffer())
+            if hasattr(processed, "getvalue"):
+                f.write(processed.getvalue())
+            elif hasattr(processed, "get_buffer"):
+                f.write(processed.get_buffer())
             else:
-                f.write(compressed.read())
+                f.write(processed.read())
         return filepath
     return ""
 
-def save_multiple_images(file_list, prefix, ticket_id):
+def save_multiple_images(file_list, prefix, ticket_id, site_id="", user_name=""):
     if not file_list:
         return ""
     saved_paths = []
     for idx, f in enumerate(file_list):
-        path = save_image_buffer(f, f"{prefix}_{idx+1}", ticket_id)
+        path = save_image_buffer(f, f"{prefix}_{idx+1}", ticket_id, site_id=site_id, user_name=user_name)
         if path:
             saved_paths.append(path)
     return ",".join(saved_paths)
 
+# ----------------- HORIZONTAL GRID GALLERY DISPLAY -----------------
 def display_images_gallery(paths_str, caption_title):
     if not paths_str:
         return
@@ -308,11 +337,18 @@ def display_images_gallery(paths_str, caption_title):
     if not valid_paths:
         return
     
-    st.write(f"📸 **{caption_title} ({len(valid_paths)} photo{'s' if len(valid_paths) > 1 else ''}):**")
-    for i, p in enumerate(valid_paths):
-        c_left, c_mid, c_right = st.columns([1, 2, 1])
-        with c_mid:
-            st.image(p, caption=f"Photo {i+1}", width=300)
+    st.markdown(f"##### 📸 {caption_title} ({len(valid_paths)})")
+    num_cols = min(len(valid_paths), 4)
+    cols = st.columns(num_cols)
+    
+    for idx, img_path in enumerate(valid_paths):
+        col = cols[idx % num_cols]
+        with col:
+            st.image(
+                img_path,
+                caption=f"Photo {idx + 1}",
+                use_container_width=True
+            )
 
 def format_dt(dt_val):
     if not dt_val:
@@ -324,7 +360,7 @@ def format_dt(dt_val):
     except Exception:
         return str(dt_val)[:16]
 
-# ----------------- SESSION & LOGIN (SELFIE & GPS) -----------------
+# ----------------- SESSION & LOGIN (FACE FRAME & GPS) -----------------
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.username = ""
@@ -353,7 +389,39 @@ if not st.session_state.logged_in:
         else:
             st.warning("Please turn on Device GPS / Location and allow browser permissions.")
 
-        st.write("📷 **Take live selfie to login (Mandatory):**")
+        st.markdown("""
+        <style>
+        div[data-testid="stCameraInput"] {
+            position: relative;
+        }
+        div[data-testid="stCameraInput"] video {
+            border-radius: 12px;
+        }
+        div[data-testid="stCameraInput"]::after {
+            content: "Fit Face in Frame";
+            position: absolute;
+            top: 45%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 170px;
+            height: 220px;
+            border: 3px dashed #22c55e;
+            border-radius: 50%;
+            pointer-events: none;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            color: #22c55e;
+            font-size: 13px;
+            font-weight: bold;
+            padding-bottom: 12px;
+            box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
+            z-index: 10;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        st.write("📷 **Take live selfie to login (Mandatory - Align face inside frame):**")
         selfie_pic = st.camera_input("Take Live Selfie")
 
         if st.button("Login", use_container_width=True):
@@ -363,7 +431,7 @@ if not st.session_state.logged_in:
                 elif not current_map_link:
                     st.error("GPS location not detected! Please turn on device GPS and allow browser location access.")
                 else:
-                    saved_selfie = save_image_buffer(selfie_pic, "login_selfie", login_user)
+                    saved_selfie = save_image_buffer(selfie_pic, "login_selfie", login_user, user_name=USERS[login_user]["name"])
                     st.session_state.logged_in = True
                     st.session_state.username = login_user
                     st.session_state.user_info = USERS[login_user]
@@ -469,7 +537,7 @@ else:
 
                     all_current_rows = load_all_faults()
                     new_id = f"TKT-{len(all_current_rows) + 101}"
-                    photo_paths = save_multiple_images(fault_imgs, "fault", new_id)
+                    photo_paths = save_multiple_images(fault_imgs, "fault", new_id, site_id=clean_site, user_name=user['name'])
 
                     site_with_jc = f"{clean_site} [{selected_jc}]"
                     dg_combined = f"{dg_make} ({dg_rating})"
@@ -492,17 +560,17 @@ else:
                         photo_count = len(fault_imgs) if fault_imgs else 0
                         tg_msg = (
                             f"🚨 *New DG Fault Logged!*\n\n"
-                            f"   *Ticket ID:* `{new_id}`\n"
-                            f"📌 *Site ID:* `{clean_site}`\n"
+                            f"📌 *Ticket ID:* `{new_id}`\n"
+                            f"🏢 *Site ID:* `{clean_site}`\n"
                             f"   *JC:* {selected_jc}\n"
                             f"   *DG:* {dg_make} ({dg_rating})\n"
                             f"   *Contact No:* [{clean_mobile}](tel:{clean_mobile})\n"
-                            f"📞 *Online Support:* {support_final_name}\n"
+                            f"   *Online Support:* {support_final_name}\n"
                             f"   *Support Guidance:* {online_sup_remarks if online_sup_remarks else 'N/A'}\n"
                             f"📝 *Fault Remarks:* {desc}\n"
                             f"   *Photos Uploaded:* {photo_count}\n"
-                            f"👤 *Logged by:* {user['name']} (📞 {clean_mobile})\n"
-                            f"🕒 *Date & Time (IST):* {format_dt(now_time)}"
+                            f"👤 *Logged by:* {user['name']}\n"
+                            f"   *Date & Time (IST):* {format_dt(now_time)}"
                         )
                         send_telegram_alert(tg_msg)
                         st.success(f"Fault ticket {new_id} saved to database! Telegram notification sent.")
@@ -601,7 +669,7 @@ else:
             my_cases.append((r, t_jc, trt_str, trt_cat, t_visit_date, pure_site_id))
 
     # =========================================================================
-    # ১. USER LIVE TRACKER & SUMMARY
+    # 1. USER LIVE TRACKER & SUMMARY
     # =========================================================================
     st.subheader(f"📊 My Live DG Fault Tracker ({user['name']})")
 
@@ -617,7 +685,7 @@ else:
     kpi4.metric("My Closed (Last 30 Days)", user_closed_count)
 
     # =========================================================================
-    # ২. JC-WISE BREAKDOWN TABLE
+    # 2. JC-WISE BREAKDOWN TABLE
     # =========================================================================
     st.write("---")
     st.markdown("#### 🏢 JC-wise Status & In-Progress Breakdown (JIO Centre)")
@@ -663,7 +731,7 @@ else:
     st.divider()
 
     # =========================================================================
-    # ৩. USER'S TICKETS MASTER TABLE
+    # 3. USER'S TICKETS MASTER TABLE
     # =========================================================================
     st.markdown("### 📋 My Tickets Master Table")
     st.caption(f"Showing **{len(my_cases)}** actionable tickets assigned to or created by you")
@@ -712,7 +780,7 @@ else:
         st.info("No active tickets found matching your user account.")
 
     # =========================================================================
-    # ৪. DETAILED TICKET ACTION CARDS (4-TIER WORKFLOW & CENTERED MEDIUM PHOTOS)
+    # 4. DETAILED TICKET ACTION CARDS (HORIZONTAL GRID GALLERY)
     # =========================================================================
     st.write("---")
     st.subheader("🔍 Ticket Action & Individual Details")
@@ -760,7 +828,7 @@ else:
                 if t_l_selfie and os.path.exists(t_l_selfie):
                     st.image(t_l_selfie, caption="Logged Selfie", width=120)
 
-            # ফল্ট ফটো নিৰ্দিষ্ট Medium Size (Width: 300px) ত প্ৰদৰ্শন
+            # Fault Photos: 4-Column Horizontal Grid
             display_images_gallery(t_fphoto, "Fault Photos")
 
             if t_docket:
@@ -773,9 +841,9 @@ else:
                 st.markdown(f"📅 **Scheduled Site Visit Date:** **{t_visit_date}**")
 
             if t_rect:
-                st.warning(f"Rectification Notes: {t_rect}")
+                st.warning(f"Work / Rectification Notes:\n\n{t_rect}")
 
-            # কাম সম্পূৰ্ণ হোৱাৰ ফটো নিৰ্দিষ্ট Medium Size (Width: 300px) ত প্ৰদৰ্শন
+            # Rectification Photos: 4-Column Horizontal Grid
             display_images_gallery(t_rphoto, "Rectification Photos")
 
             if t_act_selfie and os.path.exists(t_act_selfie):
@@ -788,13 +856,19 @@ else:
                 with c_act2:
                     st.image(t_act_selfie, caption="Action Selfie", width=120)
 
-            # ----------------- প্ৰথম স্তৰ: SM / ADMIN প্ৰাৰম্ভিক অনুমোদন (PENDING_DOCKET) -----------------
+            # ----------------- STAGE 1: SM / ADMIN INITIAL APPROVAL (PENDING_DOCKET) -----------------
             if (role in ["Service Manager", "Admin"]) and t_status == "PENDING_SM":
                 manager_jc = user.get("jc", "")
                 is_authorized = (role == "Admin") or (manager_jc == "All") or (ticket_jc == manager_jc)
 
                 if is_authorized:
                     st.success(f"✔️ You hold approval authority for **{ticket_jc} JC** | Elapsed TRT: **{trt_str}**")
+                    
+                    sm_reject_reason = st.text_input(
+                        "Rejection Reason / Remarks (Mandatory if Rejecting)",
+                        key=f"sm_rej_reason_{t_id}"
+                    )
+                    
                     c1, c2 = st.columns(2)
                     if c1.button("✅ Approve (Send for Docket)", key=f"sm_app_{t_id}"):
                         update_fault_in_sheet(t_id, {
@@ -805,29 +879,35 @@ else:
                         send_telegram_alert(
                             f"✅ *Fault APPROVED by SM*\n\n"
                             f"   *Ticket ID:* `{t_id}`\n"
-                            f"📌 *Site ID:* `{pure_site_id}`\n"
+                            f"🏢 *Site ID:* `{pure_site_id}`\n"
                             f"   *JC:* {ticket_jc}\n"
                             f"   *TRT at Approval:* {trt_str}\n"
                             f"👤 *Manager:* {user['name']}\n"
                             f"   *Status:* PENDING DOCKET"
                         )
                         st.rerun()
-                    if c2.button("❌ Reject", key=f"sm_rej_{t_id}"):
-                        update_fault_in_sheet(t_id, {
-                            "status": "REJECTED",
-                            "action_by_selfie": user_selfie,
-                            "action_by_loc": user_loc
-                        })
-                        send_telegram_alert(
-                            f"❌ *Fault REJECTED by SM*\n\n"
-                            f"   *Ticket ID:* `{t_id}`\n"
-                            f"📌 *Site ID:* `{pure_site_id}`\n"
-                            f"   *JC:* {ticket_jc}\n"
-                            f"   *TRT at Rejection:* {trt_str}\n"
-                            f"👤 *Manager:* {user['name']}\n"
-                            f"   *Status:* REJECTED"
-                        )
-                        st.rerun()
+                    if c2.button("❌ Reject Fault", key=f"sm_rej_{t_id}"):
+                        if sm_reject_reason.strip():
+                            updated_desc = f"{t_desc}\n\n❌ SM Rejection Remarks: {sm_reject_reason.strip()}"
+                            update_fault_in_sheet(t_id, {
+                                "status": "REJECTED",
+                                "desc": updated_desc,
+                                "action_by_selfie": user_selfie,
+                                "action_by_loc": user_loc
+                            })
+                            send_telegram_alert(
+                                f"❌ *Fault REJECTED by SM*\n\n"
+                                f"   *Ticket ID:* `{t_id}`\n"
+                                f"🏢 *Site ID:* `{pure_site_id}`\n"
+                                f"   *JC:* {ticket_jc}\n"
+                                f"📝 *Reject Remarks:* {sm_reject_reason.strip()}\n"
+                                f"   *TRT at Rejection:* {trt_str}\n"
+                                f"👤 *Manager:* {user['name']}\n"
+                                f"   *Status:* REJECTED"
+                            )
+                            st.rerun()
+                        else:
+                            st.error("Please enter a rejection reason before rejecting the fault ticket.")
                 else:
                     assigned_sm_name = "Assigned SM"
                     for u in USERS.values():
@@ -836,7 +916,7 @@ else:
                             break
                     st.warning(f"🔒 Ticket belongs to **{ticket_jc} JC**. Only **{assigned_sm_name}** or Admin can approve/reject.")
 
-            # ----------------- দ্বিতীয় স্তৰ: DOCKET TEAM - কেৱল DOCKET NUMBER প্ৰদান (PENDING_SE_ALIGN) -----------------
+            # ----------------- STAGE 2: DOCKET TEAM - DOCKET NUMBER ONLY (PENDING_SE_ALIGN) -----------------
             elif (role in ["Docket Team", "Admin"]) and t_status == "PENDING_DOCKET":
                 st.info("📋 **Docket Desk Action:** Enter the Docket Number only. SE alignment & visit date will be assigned by the Service Manager.")
                 d_no = st.text_input("Enter Docket Number", key=f"doc_in_{t_id}")
@@ -851,7 +931,7 @@ else:
                         send_telegram_alert(
                             f"📋 *Docket Number Provided!*\n\n"
                             f"   *Ticket ID:* `{t_id}`\n"
-                            f"📌 *Site ID:* `{pure_site_id}`\n"
+                            f"🏢 *Site ID:* `{pure_site_id}`\n"
                             f"   *JC:* {ticket_jc}\n"
                             f"📋 *Docket No:* `{d_no.strip()}`\n"
                             f"   *Status:* PENDING SE ALIGN & VISIT DATE BY SM"
@@ -860,7 +940,7 @@ else:
                     else:
                         st.error("Please enter a valid Docket Number.")
 
-            # ----------------- তৃতীয় স্তৰ: SM / ADMIN - SE ALIGN & VISIT DATE নিৰ্ধাৰণ (ASSIGNED_ENG) -----------------
+            # ----------------- STAGE 3: SM / ADMIN - SE ALIGN & VISIT DATE (ASSIGNED_ENG) -----------------
             elif (role in ["Service Manager", "Admin"]) and t_status == "PENDING_SE_ALIGN":
                 manager_jc = user.get("jc", "")
                 is_authorized = (role == "Admin") or (manager_jc == "All") or (ticket_jc == manager_jc)
@@ -896,7 +976,7 @@ else:
                         send_telegram_alert(
                             f"👷 *Service Engineer Aligned by SM!*\n\n"
                             f"   *Ticket ID:* `{t_id}`\n"
-                            f"📌 *Site ID:* `{pure_site_id}`\n"
+                            f"🏢 *Site ID:* `{pure_site_id}`\n"
                             f"   *JC:* {ticket_jc}\n"
                             f"   *Docket No:* `{t_docket}`\n"
                             f"👤 *Assigned SE:* {eng_name}\n"
@@ -908,7 +988,7 @@ else:
                 else:
                     st.warning(f"🔒 Ticket belongs to **{ticket_jc} JC**. Only **{ticket_jc} SM** or Admin can align engineer & date.")
 
-            # ----------------- চতুৰ্থ স্তৰ (ক): ENGINEER WORK RECTIFICATION (PENDING_UT_VERIFY) -----------------
+            # ----------------- STAGE 4 (A): ENGINEER WORK RECTIFICATION (PENDING_UT_VERIFY) -----------------
             elif role == "Service Engineer" and t_status == "ASSIGNED_ENG":
                 if t_eng == current_username:
                     st.success(f"🔧 Ticket assigned to you! Site ID: **{pure_site_id}** | Scheduled Visit Date: **{t_visit_date if t_visit_date else 'Immediate'}**")
@@ -917,7 +997,7 @@ else:
                     
                     if st.button("Request Close", key=f"eng_btn_{t_id}"):
                         if notes:
-                            rect_photo_paths = save_multiple_images(rect_imgs, "rect", t_id)
+                            rect_photo_paths = save_multiple_images(rect_imgs, "rect", t_id, site_id=pure_site_id, user_name=user['name'])
                             update_fault_in_sheet(t_id, {
                                 "rectification": notes,
                                 "rect_photo": rect_photo_paths,
@@ -929,7 +1009,7 @@ else:
                             send_telegram_alert(
                                 f"🔧 *Work Completed by Engineer*\n\n"
                                 f"   *Ticket ID:* `{t_id}`\n"
-                                f"📌 *Site ID:* `{pure_site_id}`\n"
+                                f"🏢 *Site ID:* `{pure_site_id}`\n"
                                 f"   *JC:* {ticket_jc}\n"
                                 f"   *TRT:* {trt_str}\n"
                                 f"👤 *Engineer:* {user['name']}\n"
@@ -943,10 +1023,16 @@ else:
                     assigned_name = USERS.get(t_eng, {}).get("name", t_eng)
                     st.info(f"🔒 This ticket is assigned to **{assigned_name}**.")
 
-            # ----------------- চতুৰ্থ স্তৰ (খ): UTILITY TECH VERIFICATION (PENDING_UT_SUP_VERIFY) -----------------
+            # ----------------- STAGE 4 (B): UTILITY TECH VERIFICATION (PENDING_UT_SUP_VERIFY) -----------------
             elif role == "Utility Technician" and t_status == "PENDING_UT_VERIFY":
                 if t_logged_by == current_username:
                     st.write(f"🔍 *Site ID: `{pure_site_id}` — Please verify work done and forward to UT Supervisor:*")
+                    
+                    ut_reject_reason = st.text_input(
+                        "Rejection Reason / Rework Remarks (Mandatory if Rejecting)",
+                        key=f"ut_rej_reason_{t_id}"
+                    )
+                    
                     c1, c2 = st.columns(2)
                     if c1.button("Approve & Forward to UT Supervisor", key=f"ut_app_{t_id}"):
                         update_fault_in_sheet(t_id, {
@@ -957,7 +1043,7 @@ else:
                         send_telegram_alert(
                             f"✅ *UT Verified & Forwarded*\n\n"
                             f"   *Ticket ID:* `{t_id}`\n"
-                            f"📌 *Site ID:* `{pure_site_id}`\n"
+                            f"🏢 *Site ID:* `{pure_site_id}`\n"
                             f"   *JC:* {ticket_jc}\n"
                             f"   *TRT:* {trt_str}\n"
                             f"👤 *Verified By UT:* {user['name']}\n"
@@ -965,26 +1051,41 @@ else:
                         )
                         st.rerun()
                     if c2.button("Reject (Re-assign to Engineer)", key=f"ut_rej_{t_id}"):
-                        update_fault_in_sheet(t_id, {"status": "ASSIGNED_ENG"})
-                        send_telegram_alert(
-                            f"⚠️ *Ticket Rejected by UT*\n\n"
-                            f"   *Ticket ID:* `{t_id}`\n"
-                            f"   *Site ID:* `{pure_site_id}`\n"
-                            f"   *JC:* {ticket_jc}\n"
-                            f"📊 *Status:* Re-opened for Engineer."
-                        )
-                        st.rerun()
+                        if ut_reject_reason.strip():
+                            updated_rect = f"{t_rect}\n\n⚠️ UT Rejection Remarks: {ut_reject_reason.strip()}"
+                            update_fault_in_sheet(t_id, {
+                                "status": "ASSIGNED_ENG",
+                                "rectification": updated_rect
+                            })
+                            send_telegram_alert(
+                                f"⚠️ *Ticket Rejected by UT*\n\n"
+                                f"   *Ticket ID:* `{t_id}`\n"
+                                f"🏢 *Site ID:* `{pure_site_id}`\n"
+                                f"   *JC:* {ticket_jc}\n"
+                                f"📝 *Reject Remarks:* {ut_reject_reason.strip()}\n"
+                                f"👤 *Rejected by UT:* {user['name']}\n"
+                                f"   *Status:* Re-opened for Engineer"
+                            )
+                            st.rerun()
+                        else:
+                            st.error("Please enter a rejection reason before rejecting the engineer's work.")
                 else:
                     creator_name = USERS.get(t_logged_by, {}).get("name", t_logged_by)
                     st.warning(f"🔒 This fault was logged by **{creator_name}**. Only the creator can verify.")
 
-            # ----------------- চতুৰ্থ স্তৰ (গ): UT SUPERVISOR / ADMIN FINAL CLOSURE (CLOSED) -----------------
+            # ----------------- STAGE 4 (C): UT SUPERVISOR / ADMIN FINAL CLOSURE (CLOSED) -----------------
             elif (role in ["UT Supervisor", "Admin"]) and t_status == "PENDING_UT_SUP_VERIFY":
                 sup_jc = user.get("jc", "")
                 is_authorized = (role == "Admin") or (sup_jc == "All") or (ticket_jc == sup_jc)
 
                 if is_authorized:
                     st.success(f"🛡️ **Final UT Supervisor Approval Authority for {ticket_jc} JC**")
+                    
+                    sup_reject_reason = st.text_input(
+                        "Rejection Reason / Remarks (Mandatory if Rejecting)",
+                        key=f"sup_rej_reason_{t_id}"
+                    )
+                    
                     c_sup1, c_sup2 = st.columns(2)
                     if c_sup1.button("🏆 Final Approve & Close Ticket", key=f"sup_app_{t_id}"):
                         now_close = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
@@ -997,7 +1098,7 @@ else:
                         send_telegram_alert(
                             f"🎉 *Ticket CLOSED (Final Approval by UT Supervisor)*\n\n"
                             f"   *Ticket ID:* `{t_id}`\n"
-                            f"   *Site ID:* `{pure_site_id}`\n"
+                            f"🏢 *Site ID:* `{pure_site_id}`\n"
                             f"   *JC:* {ticket_jc}\n"
                             f"   *Total Resolution TRT:* {trt_str}\n"
                             f"👤 *Final Closed by UT Sup:* {user['name']}\n"
@@ -1005,15 +1106,23 @@ else:
                         )
                         st.rerun()
                     if c_sup2.button("❌ Reject back to Engineer", key=f"sup_rej_{t_id}"):
-                        update_fault_in_sheet(t_id, {"status": "ASSIGNED_ENG"})
-                        send_telegram_alert(
-                            f"⚠️ *Final Approval Rejected by UT Sup*\n\n"
-                            f"   *Ticket ID:* `{t_id}`\n"
-                            f"   *Site ID:* `{pure_site_id}`\n"
-                            f"   *JC:* {ticket_jc}\n"
-                            f"👤 *Rejected by:* {user['name']}\n"
-                            f"   *Status:* Re-assigned to Engineer"
-                        )
-                        st.rerun()
+                        if sup_reject_reason.strip():
+                            updated_rect = f"{t_rect}\n\n⚠️ UT Sup Rejection Remarks: {sup_reject_reason.strip()}"
+                            update_fault_in_sheet(t_id, {
+                                "status": "ASSIGNED_ENG",
+                                "rectification": updated_rect
+                            })
+                            send_telegram_alert(
+                                f"⚠️ *Final Approval Rejected by UT Sup*\n\n"
+                                f"   *Ticket ID:* `{t_id}`\n"
+                                f"🏢 *Site ID:* `{pure_site_id}`\n"
+                                f"   *JC:* {ticket_jc}\n"
+                                f"📝 *Reject Remarks:* {sup_reject_reason.strip()}\n"
+                                f"👤 *Rejected by:* {user['name']}\n"
+                                f"   *Status:* Re-assigned to Engineer"
+                            )
+                            st.rerun()
+                        else:
+                            st.error("Please enter a rejection reason before rejecting the ticket.")
                 else:
                     st.warning(f"🔒 This ticket belongs to **{ticket_jc} JC**. Only **{ticket_jc} UT Supervisor** or Admin can grant final closure.")
